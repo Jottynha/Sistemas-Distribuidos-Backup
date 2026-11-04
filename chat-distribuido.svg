@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="190" viewBox="0 0 720 190" role="img" aria-labelledby="title desc">
+  <title id="title">Chat Distribuído</title>
+  <desc id="desc">Ícone de balões de conversa conectados, representando clientes Desktop, Web e Middleware.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="174" height="174" rx="38" fill="#0f172a"/>
+  <path d="M43 56c0-12 10-22 22-22h59c12 0 22 10 22 22v36c0 12-10 22-22 22H92l-22 19v-19h-5c-12 0-22-10-22-22z" fill="url(#g)"/>
+  <path d="M62 68h64M62 86h43" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".95"/>
+  <path d="M77 124c0-9 7-16 16-16h43c9 0 16 7 16 16v22c0 9-7 16-16 16h-27l-17 13v-13h-0c-9 0-16-7-16-16z" fill="url(#bubble)" stroke="#67e8f9" stroke-width="3"/>
+  <circle cx="99" cy="135" r="4" fill="#67e8f9"/><circle cx="115" cy="135" r="4" fill="#67e8f9"/><circle cx="131" cy="135" r="4" fill="#67e8f9"/>
+  <path d="M190 96h38m0 0 15-15m-15 15 15 15" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="274" y="88" fill="#0f172a" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="43" font-weight="800" letter-spacing="-.8">CHAT DISTRIBUÍDO</text>
+  <text x="277" y="125" fill="#475569" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="19" font-weight="500" letter-spacing="2.1">SISTEMAS DISTRIBUÍDOS</text>
+  <rect x="277" y="143" width="82" height="5" rx="2.5" fill="#6366f1"/>
+  <rect x="365" y="143" width="42" height="5" rx="2.5" fill="#06b6d4"/>
+</svg>
