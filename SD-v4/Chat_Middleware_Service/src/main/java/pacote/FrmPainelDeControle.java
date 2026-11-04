@@ -12,16 +12,6 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         setDefaultCloseOperation(
                 javax.swing.WindowConstants.EXIT_ON_CLOSE
         );
-
-        // Reaproveita o botao de servicos de terceiros
-        // como coletor centralizado de logs.
-        LBLSrvTerceirosLegenda.setText("Coletor de Logs:");
-
-        LBLSrvTerceiros.setText(
-                "Erros dos clientes Desktop, Web e outros"
-        );
-
-        // Publicidade nao faz parte desta atividade.
         LBLSrvPublicidadeLegenda.setText(
                 "Servico adicional:"
         );

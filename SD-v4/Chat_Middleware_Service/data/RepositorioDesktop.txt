@@ -1,3 +1,5 @@
-Viado de bosta
 <img src='http://127.0.0.1:8081/figurinhas/avatars/icons8-lanterna-verde-16.png' width='20' height='20'><font color='Blue'>Joao</font><b> Fala: </b>Oi<br>
 <img src='' width='20' height='20'><font color=''></font><b> Fala: </b>oi<br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/menino.png' width='30' height='30'><font size='+1' color='Navy'><b>jOAO</b></font> Diz: oLÁ<br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/icons8-lanterna-verde-16.png' width='20' height='20'><font color='Blue'>Joao</font><b> Fala: </b>Oie<br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/menino.png' width='30' height='30'><font size='+1' color='Navy'><b>Jota</b></font> Diz: Olaaa<br>
