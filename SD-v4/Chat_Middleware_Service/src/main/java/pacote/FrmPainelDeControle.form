@@ -24,7 +24,7 @@
   <Layout>
     <DimensionLayout dim="0">
       <Group type="103" groupAlignment="0" attributes="0">
-          <Group type="102" attributes="0">
+          <Group type="102" alignment="0" attributes="0">
               <EmptySpace max="-2" attributes="0"/>
               <Group type="103" groupAlignment="0" attributes="0">
                   <Component id="LBLSrvTerceiros" alignment="0" min="-2" max="-2" attributes="0"/>
@@ -35,9 +35,12 @@
                   <Component id="LBLSrvTerceirosLegenda" alignment="0" min="-2" max="-2" attributes="0"/>
                   <Component id="LBLSrvPublicidade" alignment="0" min="-2" max="-2" attributes="0"/>
                   <Component id="LBLSrvPublicidadeLegenda" alignment="0" min="-2" max="-2" attributes="0"/>
+                  <Component id="LBLLog" alignment="0" min="-2" max="-2" attributes="0"/>
+                  <Component id="LBLLogLegenda" alignment="0" min="-2" max="-2" attributes="0"/>
               </Group>
               <EmptySpace max="-2" attributes="0"/>
               <Group type="103" groupAlignment="0" attributes="0">
+                  <Component id="BtnAtivarLog" alignment="0" max="32767" attributes="0"/>
                   <Component id="BtnAtivarPublicidade" max="32767" attributes="0"/>
                   <Component id="BtnAtivarDesktop" max="32767" attributes="0"/>
                   <Component id="BtnAtivarWeb" alignment="0" max="32767" attributes="0"/>
@@ -86,7 +89,16 @@
                       <Component id="LBLSrvPublicidade" min="-2" max="-2" attributes="0"/>
                   </Group>
               </Group>
-              <EmptySpace pref="25" max="32767" attributes="0"/>
+              <EmptySpace type="separate" max="-2" attributes="0"/>
+              <Group type="103" groupAlignment="0" attributes="0">
+                  <Component id="BtnAtivarLog" min="-2" pref="53" max="-2" attributes="0"/>
+                  <Group type="102" attributes="0">
+                      <Component id="LBLLog" min="-2" max="-2" attributes="0"/>
+                      <EmptySpace max="-2" attributes="0"/>
+                      <Component id="LBLLogLegenda" min="-2" max="-2" attributes="0"/>
+                  </Group>
+              </Group>
+              <EmptySpace pref="54" max="32767" attributes="0"/>
           </Group>
       </Group>
     </DimensionLayout>
@@ -211,6 +223,36 @@
       <Events>
         <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="BtnAtivarPublicidadeActionPerformed"/>
       </Events>
+    </Component>
+    <Component class="javax.swing.JToggleButton" name="BtnAtivarLog">
+      <Properties>
+        <Property name="font" type="java.awt.Font" editor="org.netbeans.beaninfo.editors.FontEditor">
+          <Font name="Segoe UI" size="25" style="0"/>
+        </Property>
+        <Property name="text" type="java.lang.String" value="Ativar"/>
+      </Properties>
+      <Events>
+        <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="BtnAtivarLogActionPerformed"/>
+      </Events>
+    </Component>
+    <Component class="javax.swing.JLabel" name="LBLLog">
+      <Properties>
+        <Property name="font" type="java.awt.Font" editor="org.netbeans.beaninfo.editors.FontEditor">
+          <Font name="Liberation Sans" size="20" style="0"/>
+        </Property>
+        <Property name="text" type="java.lang.String" value="Servi&#xe7;o Log"/>
+      </Properties>
+    </Component>
+    <Component class="javax.swing.JLabel" name="LBLLogLegenda">
+      <Properties>
+        <Property name="font" type="java.awt.Font" editor="org.netbeans.beaninfo.editors.FontEditor">
+          <Font name="Liberation Sans" size="12" style="0"/>
+        </Property>
+        <Property name="foreground" type="java.awt.Color" editor="org.netbeans.beaninfo.editors.ColorEditor">
+          <Color blue="0" green="0" red="ff" type="rgb"/>
+        </Property>
+        <Property name="text" type="java.lang.String" value="Ativar rastreamento de Log"/>
+      </Properties>
     </Component>
   </SubComponents>
 </Form>

@@ -1,10 +1,37 @@
 package pacote;
 import javax.swing.JOptionPane;
+import java.io.IOException;
 
 public class FrmPainelDeControle extends javax.swing.JFrame {
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmPainelDeControle.class.getName());
     public FrmPainelDeControle() {
+
         initComponents();
+
+        // Ao fechar o painel, encerra o middleware.
+        setDefaultCloseOperation(
+                javax.swing.WindowConstants.EXIT_ON_CLOSE
+        );
+
+        // Reaproveita o botao de servicos de terceiros
+        // como coletor centralizado de logs.
+        LBLSrvTerceirosLegenda.setText("Coletor de Logs:");
+
+        LBLSrvTerceiros.setText(
+                "Erros dos clientes Desktop, Web e outros"
+        );
+
+        // Publicidade nao faz parte desta atividade.
+        LBLSrvPublicidadeLegenda.setText(
+                "Servico adicional:"
+        );
+
+        LBLSrvPublicidade.setText(
+                "Nao utilizado nesta atividade"
+        );
+
+        BtnAtivarPublicidade.setEnabled(false);
+        BtnAtivarPublicidade.setText("N/A");
     }
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
@@ -22,6 +49,9 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         LBLSrvPublicidade = new javax.swing.JLabel();
         LBLSrvPublicidadeLegenda = new javax.swing.JLabel();
         BtnAtivarPublicidade = new javax.swing.JToggleButton();
+        BtnAtivarLog = new javax.swing.JToggleButton();
+        LBLLog = new javax.swing.JLabel();
+        LBLLogLegenda = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setTitle("Painel de Controle");
@@ -70,6 +100,17 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         BtnAtivarPublicidade.setText("Ativar");
         BtnAtivarPublicidade.addActionListener(this::BtnAtivarPublicidadeActionPerformed);
 
+        BtnAtivarLog.setFont(new java.awt.Font("Segoe UI", 0, 25)); // NOI18N
+        BtnAtivarLog.setText("Ativar");
+        BtnAtivarLog.addActionListener(this::BtnAtivarLogActionPerformed);
+
+        LBLLog.setFont(new java.awt.Font("Liberation Sans", 0, 20)); // NOI18N
+        LBLLog.setText("Serviço Log");
+
+        LBLLogLegenda.setFont(new java.awt.Font("Liberation Sans", 0, 12)); // NOI18N
+        LBLLogLegenda.setForeground(new java.awt.Color(255, 0, 0));
+        LBLLogLegenda.setText("Ativar rastreamento de Log");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -84,9 +125,12 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
                     .addComponent(LBLSrvDesktopLegenda)
                     .addComponent(LBLSrvTerceirosLegenda)
                     .addComponent(LBLSrvPublicidade)
-                    .addComponent(LBLSrvPublicidadeLegenda))
+                    .addComponent(LBLSrvPublicidadeLegenda)
+                    .addComponent(LBLLog)
+                    .addComponent(LBLLogLegenda))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(BtnAtivarLog, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addComponent(BtnAtivarPublicidade, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addComponent(BtnAtivarDesktop, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addComponent(BtnAtivarWeb, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -124,7 +168,14 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
                         .addComponent(LBLSrvPublicidadeLegenda)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(LBLSrvPublicidade)))
-                .addContainerGap(25, Short.MAX_VALUE))
+                .addGap(18, 18, 18)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(BtnAtivarLog, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(LBLLog)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(LBLLogLegenda)))
+                .addContainerGap(54, Short.MAX_VALUE))
         );
 
         pack();
@@ -132,37 +183,144 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
 
     private void BtnAtivarDesktopActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnAtivarDesktopActionPerformed
 
+
         if (BtnAtivarDesktop.isSelected()) {
-            BtnAtivarDesktop.setText("Desativar");
-            Util.desktopRecepcaoThread = new DesktopRecepcaoThread();
-            Thread.ofVirtual().start(Util.desktopRecepcaoThread);
-            Util.desktopEnvioThread = new DesktopEnvioThread();
-            Thread.ofVirtual().start(Util.desktopEnvioThread);
-        } else {
-            int resposta = JOptionPane.showConfirmDialog(null,"Deseja realmente parar os Serviços para clientes DESKTOP?","Confirmação",JOptionPane.YES_NO_OPTION);
-            if (resposta == JOptionPane.YES_OPTION) {
-                if (Util.desktopRecepcaoThread != null) {
-                    Util.desktopRecepcaoThread.fecharServidor();
-                }
-                if (Util.desktopEnvioThread != null) {
-                    Util.desktopEnvioThread.fecharServidor();
-                }
-                Util.desktopRecepcaoThread = null;
-                Util.desktopEnvioThread = null;
+
+            try {
+
+                Util.iniciarDesktop();
+
+                BtnAtivarDesktop.setText("Desativar");
+
+                LBLSrvDesktop.setText(
+                        "Servidor Desktop ativado"
+                );
+
+                LBLSrvDesktop.setForeground(
+                        new java.awt.Color(0, 150, 0)
+                );
+
+            } catch (Exception e) {
+
+                BtnAtivarDesktop.setSelected(false);
                 BtnAtivarDesktop.setText("Ativar");
+
+                Util.registrarErroServidor(
+                        "internal",
+                        "INTERNO/NÃO APLICÁVEL",
+                        "NÃO APLICÁVEL",
+                        "FrmPainelDeControle.BtnAtivarDesktop",
+                        e
+                );
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Nao foi possivel iniciar o servico Desktop:\n"
+                        + e.getMessage(),
+                        "Erro",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+
+        } else {
+
+            int resposta = JOptionPane.showConfirmDialog(
+                    this,
+                    "Deseja realmente parar o servico Desktop?",
+                    "Confirmacao",
+                    JOptionPane.YES_NO_OPTION
+            );
+
+            if (resposta == JOptionPane.YES_OPTION) {
+
+                Util.pararDesktop();
+
+                BtnAtivarDesktop.setText("Ativar");
+
+                LBLSrvDesktop.setText(
+                        "Inspirado no Whatsapp Desktop"
+                );
+
+                LBLSrvDesktop.setForeground(
+                        new java.awt.Color(255, 0, 0)
+                );
+
             } else {
+
                 BtnAtivarDesktop.setSelected(true);
             }
         }
     }//GEN-LAST:event_BtnAtivarDesktopActionPerformed
 
     private void BtnAtivarWebActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnAtivarWebActionPerformed
-        if(BtnAtivarWeb.isSelected()==true){
+
+    if (BtnAtivarWeb.isSelected()) {
+
+        try {
+
+            Util.iniciarServidorWeb();
+
             BtnAtivarWeb.setText("Desativar");
-            //...
-        } else {
+
+            LBLSrvWeb.setText(
+                    "Servidor Web ativado - Porta 8081"
+            );
+
+            LBLSrvWeb.setForeground(
+                    new java.awt.Color(0, 150, 0)
+            );
+
+        } catch (Exception e) {
+
+            BtnAtivarWeb.setSelected(false);
             BtnAtivarWeb.setText("Ativar");
+
+            Util.registrarErroServidor(
+                    "internal",
+                    "INTERNO/NÃO APLICÁVEL",
+                    "NÃO APLICÁVEL",
+                    "FrmPainelDeControle.BtnAtivarWeb",
+                    e
+            );
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nao foi possivel iniciar o servico Web:\n"
+                    + e.getMessage(),
+                    "Erro",
+                    JOptionPane.ERROR_MESSAGE
+            );
         }
+
+    } else {
+
+        int resposta = JOptionPane.showConfirmDialog(
+                this,
+                "Deseja realmente parar o servico Web?",
+                "Confirmacao",
+                JOptionPane.YES_NO_OPTION
+        );
+
+        if (resposta == JOptionPane.YES_OPTION) {
+
+            Util.pararServidorWeb();
+
+            BtnAtivarWeb.setText("Ativar");
+
+            LBLSrvWeb.setText(
+                    "Inspirado no Whatsapp Web"
+            );
+
+            LBLSrvWeb.setForeground(
+                    new java.awt.Color(255, 0, 0)
+            );
+
+        } else {
+
+            BtnAtivarWeb.setSelected(true);
+        }
+    }
+
     }//GEN-LAST:event_BtnAtivarWebActionPerformed
 
     private void BtnAtivarTerceirosActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnAtivarTerceirosActionPerformed
@@ -183,15 +341,87 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_BtnAtivarPublicidadeActionPerformed
 
+    private void BtnAtivarLogActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnAtivarLogActionPerformed
+   if (BtnAtivarLog.isSelected()) {
+
+        try {
+
+            Util.iniciarColetorLogs();
+
+            BtnAtivarLog.setText("Desativar");
+
+            LBLLog.setText(
+                    "Coletor ativo - Porta 8082"
+            );
+
+            LBLLog.setForeground(
+                    new java.awt.Color(0, 150, 0)
+            );
+
+        } catch (Exception e) {
+
+            BtnAtivarLog.setSelected(false);
+            BtnAtivarLog.setText("Ativar");
+
+            Util.registrarErroServidor(
+                    "internal",
+                    "INTERNO/NÃO APLICÁVEL",
+                    "NÃO APLICÁVEL",
+                    "FrmPainelDeControle.BtnAtivarLog",
+                    e
+            );
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nao foi possivel iniciar o coletor de logs:\n"
+                    + e.getMessage(),
+                    "Erro",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+
+    } else {
+
+        int resposta = JOptionPane.showConfirmDialog(
+                this,
+                "Deseja realmente parar o coletor de logs?",
+                "Confirmacao",
+                JOptionPane.YES_NO_OPTION
+        );
+
+        if (resposta == JOptionPane.YES_OPTION) {
+
+            Util.pararColetorLogs();
+
+            BtnAtivarLog.setText("Ativar");
+
+            LBLLog.setText(
+                    "Erros dos clientes Desktop, Web e outros"
+            );
+
+            LBLLog.setForeground(
+                    new java.awt.Color(255, 0, 0)
+            );
+
+        } else {
+
+            BtnAtivarLog.setSelected(true);
+        }
+    }
+    }//GEN-LAST:event_BtnAtivarLogActionPerformed
+
     public static void main(String args[]) {
         java.awt.EventQueue.invokeLater(() -> new FrmPainelDeControle().setVisible(true));
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JToggleButton BtnAtivarDesktop;
+    private javax.swing.JToggleButton BtnAtivarLog;
     private javax.swing.JToggleButton BtnAtivarPublicidade;
     private javax.swing.JToggleButton BtnAtivarTerceiros;
     private javax.swing.JToggleButton BtnAtivarWeb;
+    private javax.swing.JLabel LBLLog;
+    private javax.swing.JLabel LBLLogLegenda;
     private javax.swing.JLabel LBLSrvDesktop;
     private javax.swing.JLabel LBLSrvDesktopLegenda;
     private javax.swing.JLabel LBLSrvPublicidade;

@@ -1,0 +1,3 @@
+Viado de bosta
+<img src='http://127.0.0.1:8081/figurinhas/avatars/icons8-lanterna-verde-16.png' width='20' height='20'><font color='Blue'>Joao</font><b> Fala: </b>Oi<br>
+<img src='' width='20' height='20'><font color=''></font><b> Fala: </b>oi<br>
