@@ -1,19 +1,94 @@
+
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
+
+<%!
+
+    private String escaparHtml(String valor) {
+
+        if (valor == null) {
+            return "";
+        }
+
+        return valor
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+%>
+
+<%
+
+    String nickname = (String) session.getAttribute("Nickname");
+
+    String cor = (String) session.getAttribute("Cor");
+
+    String avatar = (String) session.getAttribute("Avatar");
+
+    if (nickname == null) {
+        response.sendRedirect("index.jsp");
+        return;
+    }
+
+    // Valida o avatar.
+    if (!"menino.png".equals(avatar)
+            && !"menina.png".equals(avatar)
+            && !"indefinido.png".equals(avatar)) {
+
+        avatar = "menino.png";
+    }
+
+    // Valida a cor.
+    if (!"Navy".equals(cor)
+            && !"Tomato".equals(cor)
+            && !"MediumSeaGreen".equals(cor)) {
+
+        cor = "Navy";
+    }
+
+    String baseUrl = application.getInitParameter(
+            "middleware.publicBaseUrl"
+    );
+
+    if (baseUrl == null || baseUrl.isBlank()) {
+        baseUrl = "http://127.0.0.1:8081";
+    }
+
+    baseUrl = baseUrl.replaceAll("/+$", "");
+
+    String avatarUrl = baseUrl
+            + "/figurinhas/avatars/"
+            + avatar;
+
+%>
+
 <!DOCTYPE html>
 <html>
+
     <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>JSP Page</title>
+
+        <meta charset="UTF-8">
+
+        <title>Identificacao</title>
+
     </head>
+
     <body>
-        <!-- <<img src="images/menino.png" width="50" height="50"/>  -->
-        <% //ScriptLet
-           /*out.print("<img src=\"images/" + session.getAttribute("Avatar") +"\" "
-                   + "width=\"50\" height=\"50\">");*/
-        %>
-        <img src="images/<%=session.getAttribute("Avatar")%>" width="50" height="50">
-        <font size="+2" color="<%=session.getAttribute("Cor")%>">
-        <b><%=session.getAttribute("Nickname")%></b>                
+
+        <img src="<%= escaparHtml(avatarUrl) %>"
+             width="50"
+             height="50"
+             alt="Avatar">
+
+        <font size="+2"
+              color="<%= cor %>">
+
+            <b><%= escaparHtml(nickname) %></b>
+
         </font>
+
     </body>
+
 </html>
