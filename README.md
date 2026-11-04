@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/chat-distribuido.svg" alt="Chat Distribuído — Sistemas Distribuídos" width="520">
+  <img src="chat-distribuido.svg" alt="Chat Distribuído — Sistemas Distribuídos" width="520">
 </p>
 
 <p align="center">
