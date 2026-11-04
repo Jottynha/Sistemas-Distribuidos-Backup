@@ -1,4 +1,3 @@
-
 package pacote;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -31,11 +30,13 @@ public class Util {
     public static final int PortaRecepcaoDesktop = 6662;
     public static final int PortaWeb = 8081;
     public static final int PortaLogs = 8082;
-    // DIRETORIOS
-    public static final String PathRepDesktop = "data/RepositorioDesktop.txt";
-    public static final Path DiretorioDados = Path.of("data");
+    // DIRETORIOS: sempre relativos a pasta do modulo/JAR, nao ao terminal.
+    private static final Path DiretorioBase = localizarDiretorioBase();
+    public static final Path DiretorioDados = DiretorioBase.resolve("data");
     public static final Path DiretorioLogs = DiretorioDados.resolve("logs");
-    public static final Path DiretorioFigurinhas = Path.of("figurinhas");
+    public static final Path DiretorioFigurinhas = DiretorioBase.resolve("figurinhas");
+    public static final String PathRepDesktop =
+            DiretorioDados.resolve("RepositorioDesktop.txt").toString();
     // THREADS DESKTOP EXISTENTES
     public static DesktopRecepcaoThread desktopRecepcaoThread;
     public static DesktopEnvioThread desktopEnvioThread;
@@ -56,6 +57,60 @@ public class Util {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private Util() {
     }
+
+    /**
+     * Descobre a pasta do modulo a partir da classe compilada ou do JAR.
+     * Pode ser sobrescrita por -Dchat.server.baseDir=... ou CHAT_SERVER_BASE_DIR.
+     */
+    private static Path localizarDiretorioBase() {
+
+        String configurado = System.getProperty("chat.server.baseDir");
+        if (configurado == null || configurado.isBlank()) {
+            configurado = System.getenv("CHAT_SERVER_BASE_DIR");
+        }
+        if (configurado != null && !configurado.isBlank()) {
+            return Path.of(configurado).toAbsolutePath().normalize();
+        }
+
+        try {
+            Path local = Path.of(
+                    Util.class.getProtectionDomain()
+                            .getCodeSource()
+                            .getLocation()
+                            .toURI()
+            ).toAbsolutePath().normalize();
+
+            // NetBeans/Maven: .../Chat_Middleware_Service/target/classes
+            if (Files.isDirectory(local)) {
+                Path parent = local.getParent();
+                if (local.getFileName() != null
+                        && local.getFileName().toString().equals("classes")
+                        && parent != null
+                        && parent.getFileName() != null
+                        && parent.getFileName().toString().equals("target")
+                        && parent.getParent() != null) {
+                    return parent.getParent();
+                }
+                return local;
+            }
+
+            // JAR: .../Chat_Middleware_Service/target/aplicacao.jar
+            Path parent = local.getParent();
+            if (parent != null
+                    && parent.getFileName() != null
+                    && parent.getFileName().toString().equals("target")
+                    && parent.getParent() != null) {
+                return parent.getParent();
+            }
+            return parent != null ? parent : Path.of(System.getProperty("user.dir"));
+
+        } catch (Exception erro) {
+            System.err.println("Nao foi possivel localizar a pasta do middleware: "
+                    + erro.getMessage());
+            return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        }
+    }
+
     // =========================================================
     // 1. HISTORICO EM RAM E TXT
     // =========================================================
@@ -69,11 +124,20 @@ public class Util {
         Files.createDirectories(DiretorioDados);
         Files.createDirectories(DiretorioLogs);
         Files.createDirectories(DiretorioFigurinhas);
+        Files.createDirectories(DiretorioFigurinhas.resolve("avatars"));
+
+        System.out.println("========== DIRETORIOS DO MIDDLEWARE ==========");
+        System.out.println("Base: " + DiretorioBase);
+        System.out.println("Dados: " + DiretorioDados);
+        System.out.println("Logs: " + DiretorioLogs);
+        System.out.println("Figurinhas: " + DiretorioFigurinhas);
+        System.out.println("Historico: " + PathRepDesktop);
+        System.out.println("==============================================");
 
         Path arquivoHistorico = Path.of(PathRepDesktop);
 
-        Path arquivoAntigo = Path.of(
-                "C_", "Dados", "RepositorioDesktop.txt"
+        Path arquivoAntigo = DiretorioBase.resolve(
+                Path.of("C_", "Dados", "RepositorioDesktop.txt")
         );
 
         // Migra o historico antigo sem apagar o original.
@@ -322,6 +386,15 @@ public class Util {
                 "/api/stickers",
                 Util::listarFigurinhas
         );
+        servidor.createContext(
+                "/api/avatars",
+                Util::listarAvatares
+        );
+
+        servidor.createContext(
+                "/api/emojis",
+                Util::listarEmojis
+        );
 
         servidor.createContext(
                 "/figurinhas/",
@@ -433,10 +506,9 @@ public class Util {
     /**
      * Lista as figurinhas que estao na pasta central.
      */
+
     private static void listarFigurinhas(
             HttpExchange troca) throws IOException {
-
-        adicionarCabecalhosCors(troca);
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
             responder(
@@ -446,13 +518,48 @@ public class Util {
             return;
         }
 
-        try (var arquivos = Files.list(DiretorioFigurinhas)) {
+        listarImagensDoDiretorio(
+                troca,
+                DiretorioFigurinhas
+        );
+    }
+
+
+    private static void listarAvatares(
+            HttpExchange troca) throws IOException {
+
+        if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+            responder(
+                    troca, 405, "Metodo nao permitido",
+                    "text/plain; charset=UTF-8"
+            );
+            return;
+        }
+
+        Path pastaAvatares =
+                DiretorioFigurinhas.resolve("avatars");
+
+        Files.createDirectories(pastaAvatares);
+
+        listarImagensDoDiretorio(
+                troca,
+                pastaAvatares
+        );
+    }
+
+
+    private static void listarImagensDoDiretorio(
+            HttpExchange troca,
+            Path diretorio) throws IOException {
+
+        try (var arquivos = Files.list(diretorio)) {
 
             String resultado = arquivos
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
+                    .filter(Util::ehArquivoImagem)
                     .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(Collectors.joining("\n"));
+                    .collect(java.util.stream.Collectors.joining("\n"));
 
             responder(
                     troca,
@@ -467,24 +574,35 @@ public class Util {
                     "web",
                     "INTERNO/NÃO APLICÁVEL",
                     ipRemoto(troca),
-                    "Util.listarFigurinhas",
+                    "Util.listarImagensDoDiretorio",
                     erro
             );
 
             responder(
-                    troca, 500, "Erro ao listar figurinhas",
+                    troca,
+                    500,
+                    "Erro ao listar imagens",
                     "text/plain; charset=UTF-8"
             );
         }
     }
 
-    /**
-     * Disponibiliza imagens pela URL HTTP.
-     */
-    private static void servirFigurinha(
-            HttpExchange troca) throws IOException {
+    private static boolean ehArquivoImagem(String nome) {
 
-        adicionarCabecalhosCors(troca);
+        String extensao = nome.toLowerCase(
+                java.util.Locale.ROOT
+        );
+
+        return extensao.endsWith(".png")
+                || extensao.endsWith(".gif")
+                || extensao.endsWith(".jpg")
+                || extensao.endsWith(".jpeg")
+                || extensao.endsWith(".webp");
+    }
+
+
+    private static void listarEmojis(
+            HttpExchange troca) throws IOException {
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
             responder(
@@ -494,43 +612,137 @@ public class Util {
             return;
         }
 
-        String relativo = troca.getRequestURI()
-                .getPath()
-                .substring("/figurinhas/".length());
+        String resultado = String.join(
+                "\n",
+                EMOJIS_COMPARTILHADOS
+        );
 
-        Path raiz = DiretorioFigurinhas
-                .toAbsolutePath()
-                .normalize();
+        responder(
+                troca,
+                200,
+                resultado,
+                "text/plain; charset=UTF-8"
+        );
+    }
 
-        Path arquivo = raiz.resolve(relativo)
-                .normalize();
 
-        if (!arquivo.startsWith(raiz)
-                || !Files.isRegularFile(arquivo)) {
 
+
+
+
+    private static void servirFigurinha(
+            HttpExchange troca) throws IOException {
+
+        if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
             responder(
-                    troca, 404, "Imagem nao encontrada",
+                    troca, 405, "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
             return;
         }
 
-        byte[] conteudo = Files.readAllBytes(arquivo);
+        try {
 
-        String tipo = Files.probeContentType(arquivo);
+            String caminho = troca.getRequestURI()
+                    .getRawPath()
+                    .substring("/figurinhas/".length());
 
-        if (tipo == null) {
-            tipo = "application/octet-stream";
-        }
+            caminho = java.net.URLDecoder.decode(
+                    caminho,
+                    StandardCharsets.UTF_8
+            );
 
-        troca.getResponseHeaders().set("Content-Type", tipo);
+            Path raiz = DiretorioFigurinhas
+                    .toRealPath();
 
-        troca.sendResponseHeaders(200, conteudo.length);
+            Path arquivo = raiz.resolve(caminho)
+                    .normalize();
 
-        try (var saida = troca.getResponseBody()) {
-            saida.write(conteudo);
+            // Impede acesso a arquivos fora da pasta central.
+            if (!arquivo.startsWith(raiz)
+                    || !Files.isRegularFile(arquivo)) {
+
+                responder(
+                        troca, 404, "Imagem nao encontrada",
+                        "text/plain; charset=UTF-8"
+                );
+                return;
+            }
+
+            // Tambem impede escapes por links simbolicos.
+            arquivo = arquivo.toRealPath();
+
+            if (!arquivo.startsWith(raiz)) {
+                responder(
+                        troca, 404, "Imagem nao encontrada",
+                        "text/plain; charset=UTF-8"
+                );
+                return;
+            }
+
+            String nome = arquivo.getFileName()
+                    .toString()
+                    .toLowerCase(java.util.Locale.ROOT);
+
+            String tipo = switch (nome.substring(
+                    nome.lastIndexOf('.') + 1)) {
+
+                case "png" -> "image/png";
+                case "gif" -> "image/gif";
+                case "jpg", "jpeg" -> "image/jpeg";
+                case "webp" -> "image/webp";
+
+                default -> "application/octet-stream";
+            };
+
+            byte[] imagem = Files.readAllBytes(arquivo);
+
+            troca.getResponseHeaders().set(
+                    "Content-Type", tipo
+            );
+
+            troca.getResponseHeaders().set(
+                    "Cache-Control", "public, max-age=3600"
+            );
+
+            troca.getResponseHeaders().set(
+                    "X-Content-Type-Options", "nosniff"
+            );
+
+            troca.getResponseHeaders().set(
+                    "Access-Control-Allow-Origin", "*"
+            );
+
+            troca.sendResponseHeaders(200, imagem.length);
+
+            try (var saida = troca.getResponseBody()) {
+                saida.write(imagem);
+            }
+
+        } catch (java.nio.file.NoSuchFileException erro) {
+
+            responder(
+                    troca, 404, "Imagem nao encontrada",
+                    "text/plain; charset=UTF-8"
+            );
+
+        } catch (Exception erro) {
+
+            registrarErroServidor(
+                    "web",
+                    "INTERNO/NÃO APLICÁVEL",
+                    ipRemoto(troca),
+                    "Util.servirFigurinha",
+                    erro
+            );
+
+            responder(
+                    troca, 500, "Erro ao carregar imagem",
+                    "text/plain; charset=UTF-8"
+            );
         }
     }
+
 
     // =========================================================
     // 4. COLETOR UNICO DE LOGS DOS CLIENTES
@@ -866,13 +1078,17 @@ public class Util {
             default -> "internal";
         };
     }
-
-    /**
-     * Encerra todos os servicos do middleware.
-     */
     public static synchronized void pararTodosServicos() {
         pararDesktop();
         pararServidorWeb();
         pararColetorLogs();
-    }
+    } 
+    private static final String[] EMOJIS_COMPARTILHADOS = {
+        "😀", "😁", "😂", "🤣", "😅", "😊",
+        "😍", "😎", "😘", "😜", "😢", "😭",
+        "😡", "😱", "🤔", "😴", "🥳", "🤩",
+        "👍", "👎", "👏", "🙏", "❤️", "💔",
+        "🔥", "🎉", "💯", "🤝", "👀", "💀"
+    };
+
 }

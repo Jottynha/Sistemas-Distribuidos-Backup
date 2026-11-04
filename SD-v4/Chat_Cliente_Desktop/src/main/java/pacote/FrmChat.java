@@ -353,11 +353,8 @@ public class FrmChat extends javax.swing.JFrame {
         JTabbedPane abasEmojis = new JTabbedPane();
 
         abasEmojis.addTab(
-                "Rostos",
-                criarGradeEmojis(new String[]{
-                    "😀", "😁", "😂", "😅", "😊", "😍",
-                    "😎", "😘", "😜", "😢", "😡", "😱"
-                })
+                "Emojis",
+                criarGradeEmojis(carregarEmojisServidor())
         );
 
         JPanel painelEmojis = new JPanel(new BorderLayout());
@@ -372,9 +369,9 @@ public class FrmChat extends javax.swing.JFrame {
         String[] stickersPadrao = {
             "fig1.gif",
             "fig2.gif",
-            "Beijo.png",
-            "Coração.png",
-            "Dinheiro.png"
+            "beijo.png",
+            "coracao.png",
+            "dinheiro.png"
         };
 
         painelStickers.add(
@@ -407,6 +404,71 @@ public class FrmChat extends javax.swing.JFrame {
         // Atualiza a lista com as figurinhas centralizadas.
         carregarStickersDoServidor();
     }
+    
+    private String[] carregarEmojisServidor() {
+
+        String[] emojisPadrao = {
+            "😀", "😁", "😂", "🤣", "😅", "😊",
+            "😍", "😎", "😘", "😜", "😢", "😭",
+            "😡", "😱", "🤔", "😴", "🥳", "🤩",
+            "👍", "👎", "👏", "🙏", "❤️", "💔",
+            "🔥", "🎉", "💯", "🤝", "👀", "💀"
+        };
+
+        java.net.HttpURLConnection conexao = null;
+
+        try {
+
+            String endereco = Util.URL_API_STICKERS.replace(
+                    "/api/stickers",
+                    "/api/emojis"
+            );
+
+            conexao = (java.net.HttpURLConnection)
+                    new java.net.URL(endereco).openConnection();
+
+            conexao.setConnectTimeout(2000);
+            conexao.setReadTimeout(3000);
+
+            if (conexao.getResponseCode() != 200) {
+                return emojisPadrao;
+            }
+
+            String resposta;
+
+            try (var entrada = conexao.getInputStream()) {
+
+                resposta = new String(
+                        entrada.readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8
+                );
+            }
+
+            String[] encontrados = resposta.lines()
+                    .filter(emoji -> !emoji.isBlank())
+                    .toArray(String[]::new);
+
+            return encontrados.length > 0
+                    ? encontrados
+                    : emojisPadrao;
+
+        } catch (Exception erro) {
+
+            System.err.println(
+                    "Nao foi possivel carregar emojis do servidor: "
+                    + erro.getMessage()
+            );
+
+            return emojisPadrao;
+
+        } finally {
+
+            if (conexao != null) {
+                conexao.disconnect();
+            }
+        }
+    }
+
 
     private JPanel criarGradeEmojis(String[] emojis) {
         JPanel painel = new JPanel(new GridLayout(0, 6, 4, 4));
@@ -651,7 +713,7 @@ public class FrmChat extends javax.swing.JFrame {
 
         java.util.regex.Pattern pattern =
                 java.util.regex.Pattern.compile(
-                        "\\\\(sticker:([^)]*)\\\\)"
+                        "\\(sticker:([^)]*)\\)"
                 );
 
         java.util.regex.Matcher matcher =

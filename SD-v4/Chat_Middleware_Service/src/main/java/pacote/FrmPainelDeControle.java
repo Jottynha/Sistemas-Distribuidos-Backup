@@ -19,6 +19,10 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         LBLSrvPublicidade.setText(
                 "Nao utilizado nesta atividade"
         );
+        
+
+        BtnAtivarTerceiros.setEnabled(false);
+        BtnAtivarTerceiros.setText("N/A");
 
         BtnAtivarPublicidade.setEnabled(false);
         BtnAtivarPublicidade.setText("N/A");

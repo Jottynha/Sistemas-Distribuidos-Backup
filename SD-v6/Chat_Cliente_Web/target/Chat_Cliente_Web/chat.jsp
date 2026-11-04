@@ -47,11 +47,13 @@
     }
 
     // Aceita somente os avatares existentes no servidor.
-    if (!"menino.png".equals(avatar)
-            && !"menina.png".equals(avatar)
-            && !"indefinido.png".equals(avatar)) {
+    if (avatar == null
+        || !avatar.matches(
+                "[a-zA-Z0-9._-]+\\.(png|gif|jpg|jpeg|webp)"
+        )
+        || avatar.contains("..")) {
 
-        avatar = "menino.png";
+    avatar = "menino.png";
     }
 
     // Armazena os dados na sessao.
