@@ -18,6 +18,13 @@ public class FrmLogin extends javax.swing.JFrame {
                     "indefinido.png"
                 }
         );
+    private final javax.swing.JLabel LblPreviewAvatar =
+            new javax.swing.JLabel("Prévia", javax.swing.SwingConstants.CENTER);
+
+    private final java.util.concurrent.atomic.AtomicLong requisicaoPreviewAvatar =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    private volatile boolean atualizandoCatalogoAvatares = false;
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmLogin.class.getName());
     public FrmLogin() {
 
@@ -29,99 +36,152 @@ public class FrmLogin extends javax.swing.JFrame {
     }
 
     private void configurarSeletorAvatares() {
-
-        LblAvatar1.setIcon(null);
-        LblAvatar2.setIcon(null);
-        LblAvatar3.setIcon(null);
         RadAvatar1.setVisible(false);
         RadAvatar2.setVisible(false);
         RadAvatar3.setVisible(false);
-
         LblAvatar1.setVisible(false);
         LblAvatar2.setVisible(false);
         LblAvatar3.setVisible(false);
 
-        CbAvataresServidor.setBounds(
-                110, 88, 250, 28
-        );
+        // Elimina as referências aos caminhos absolutos antigos do initComponents.
+        LblAvatar1.setIcon(null);
+        LblAvatar2.setIcon(null);
+        LblAvatar3.setIcon(null);
 
-        CbAvataresServidor.setToolTipText(
-                "Avatares disponiveis no servidor"
-        );
-
+        CbAvataresServidor.setBounds(110, 88, 190, 30);
+        CbAvataresServidor.setToolTipText("Selecione seu avatar");
+        CbAvataresServidor.addActionListener(e -> {
+            if (!atualizandoCatalogoAvatares) atualizarPreviewAvatar();
+        });
         getContentPane().add(CbAvataresServidor);
 
-        getContentPane().setComponentZOrder(
-                CbAvataresServidor,
-                0
-        );
+        LblPreviewAvatar.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        LblPreviewAvatar.setVerticalAlignment(javax.swing.SwingConstants.CENTER);
+        LblPreviewAvatar.setOpaque(true);
+        LblPreviewAvatar.setBackground(java.awt.Color.WHITE);
+        LblPreviewAvatar.setBorder(javax.swing.BorderFactory.createCompoundBorder(
+                javax.swing.BorderFactory.createLineBorder(new java.awt.Color(218, 224, 238)),
+                javax.swing.BorderFactory.createEmptyBorder(4, 4, 4, 4)
+        ));
+        LblPreviewAvatar.setToolTipText("Pré-visualização do avatar selecionado");
+        LblPreviewAvatar.setBounds(320, 70, 76, 76);
+        getContentPane().add(LblPreviewAvatar);
+
+        setMinimumSize(new java.awt.Dimension(430, 300));
+        setSize(new java.awt.Dimension(430, 300));
+        setResizable(false);
+        setLocationRelativeTo(null);
     }
 
     
     private void carregarAvataresServidor() {
-
         Thread.ofVirtual().start(() -> {
-
+            java.net.HttpURLConnection conexao = null;
             try {
+                String endereco = Util.URL_API_STICKERS.replace(
+                        "/api/stickers", "/api/avatars"
+                );
+                conexao = (java.net.HttpURLConnection)
+                        new java.net.URL(endereco).openConnection();
+                conexao.setConnectTimeout(3000);
+                conexao.setReadTimeout(5000);
 
-                String endereco = Util.URL_API_STICKERS
-                        .replace(
-                                "/api/stickers",
-                                "/api/avatars"
-                        );
-
-                java.net.http.HttpRequest requisicao =
-                        java.net.http.HttpRequest.newBuilder()
-                                .uri(java.net.URI.create(endereco))
-                                .timeout(java.time.Duration.ofSeconds(3))
-                                .GET()
-                                .build();
-
-                java.net.http.HttpResponse<String> resposta =
-                        java.net.http.HttpClient.newHttpClient().send(
-                                requisicao,
-                                java.net.http.HttpResponse.BodyHandlers.ofString(
-                                        java.nio.charset.StandardCharsets.UTF_8
-                                )
-                        );
-
-                if (resposta.statusCode() != 200) {
-                    return;
+                if (conexao.getResponseCode() != 200) {
+                    throw new java.io.IOException("HTTP " + conexao.getResponseCode());
                 }
 
-                String[] avatares = resposta.body()
-                        .lines()
+                String resposta;
+                try (var entrada = conexao.getInputStream()) {
+                    resposta = new String(entrada.readAllBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                }
+
+                String[] avatares = resposta.lines()
                         .map(String::trim)
                         .filter(nome -> nome.matches(
-                                "[a-zA-Z0-9._-]+\\.(png|gif|jpg|jpeg|webp)"
+                                "[a-zA-Z0-9._-]+\\\\.(png|gif|jpg|jpeg|webp)"
                         ))
                         .filter(nome -> !nome.contains(".."))
                         .toArray(String[]::new);
 
                 if (avatares.length == 0) {
-                    return;
+                    throw new java.io.IOException("O servidor não retornou avatares.");
                 }
 
                 javax.swing.SwingUtilities.invokeLater(() -> {
-
-                    CbAvataresServidor.removeAllItems();
-
-                    for (String avatar : avatares) {
-                        CbAvataresServidor.addItem(avatar);
+                    String selecionado = (String) CbAvataresServidor.getSelectedItem();
+                    atualizandoCatalogoAvatares = true;
+                    try {
+                        CbAvataresServidor.removeAllItems();
+                        for (String avatar : avatares) CbAvataresServidor.addItem(avatar);
+                        if (selecionado != null) CbAvataresServidor.setSelectedItem(selecionado);
+                    } finally {
+                        atualizandoCatalogoAvatares = false;
                     }
-
+                    atualizarPreviewAvatar();
                 });
-
             } catch (Exception erro) {
-
-                System.err.println(
-                        "Nao foi possivel carregar avatares remotos: "
-                        + erro.getMessage()
-                );
+                System.err.println("Não foi possível carregar avatares remotos: " + erro.getMessage());
+                javax.swing.SwingUtilities.invokeLater(this::atualizarPreviewAvatar);
+            } finally {
+                if (conexao != null) conexao.disconnect();
             }
         });
     }
+    private void atualizarPreviewAvatar() {
+        String nome = (String) CbAvataresServidor.getSelectedItem();
+        if (nome == null || nome.isBlank()) {
+            LblPreviewAvatar.setIcon(null);
+            LblPreviewAvatar.setText("Sem avatar");
+            return;
+        }
 
+        long idRequisicao = requisicaoPreviewAvatar.incrementAndGet();
+        LblPreviewAvatar.setIcon(null);
+        LblPreviewAvatar.setText("Carregando...");
+
+        Thread.ofVirtual().start(() -> {
+            java.net.HttpURLConnection conexao = null;
+            try {
+                String nomeCodificado = java.net.URLEncoder.encode(
+                        nome, java.nio.charset.StandardCharsets.UTF_8
+                ).replace("+", "%20");
+                String endereco = Util.URL_FIGURINHAS + "avatars/" + nomeCodificado;
+
+                conexao = (java.net.HttpURLConnection)
+                        new java.net.URL(endereco).openConnection();
+                conexao.setConnectTimeout(3000);
+                conexao.setReadTimeout(5000);
+
+                java.awt.image.BufferedImage original;
+                try (var entrada = conexao.getInputStream()) {
+                    original = javax.imageio.ImageIO.read(entrada);
+                }
+                if (original == null) throw new java.io.IOException("Formato de imagem não reconhecido.");
+
+                java.awt.Image redimensionada = original.getScaledInstance(
+                        64, 64, java.awt.Image.SCALE_SMOOTH
+                );
+                javax.swing.ImageIcon icone = new javax.swing.ImageIcon(redimensionada);
+
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                    if (requisicaoPreviewAvatar.get() == idRequisicao) {
+                        LblPreviewAvatar.setIcon(icone);
+                        LblPreviewAvatar.setText("");
+                    }
+                });
+            } catch (Exception erro) {
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                    if (requisicaoPreviewAvatar.get() == idRequisicao) {
+                        LblPreviewAvatar.setIcon(null);
+                        LblPreviewAvatar.setText("Prévia indisponível");
+                    }
+                });
+            } finally {
+                if (conexao != null) conexao.disconnect();
+            }
+        });
+    }
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {

@@ -15,3 +15,7 @@
 <img src='http://127.0.0.1:8081/figurinhas/avatars/flash.png' width='20' height='20'><font color='MediumSeaGreen'>Jota</font><b> Fala: </b>🙏<br>
 <img src='http://127.0.0.1:8081/figurinhas/avatars/menino.png' width='30' height='30'> <font color='Tomato'><b>Rosa</b></font>: Lindo<br>
 <img src='http://127.0.0.1:8081/figurinhas/avatars/menino.png' width='30' height='30'> <font color='Tomato'><b>Rosa</b></font>: oi <img src='http://127.0.0.1:8081/figurinhas/coracao.png' width='60' height='60'><br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='30' height='30' alt='Avatar'> <font size='+1' color='Navy'><b>jOAO</b></font>: 😡😡😡😡 <img src='http://127.0.0.1:8081/figurinhas/risada.png' width='72' height='72' alt='Figurinha'><br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='30' height='30' alt='Avatar'> <font size='+1' color='Navy'><b>jOAO</b></font>: Ai <img src='http://127.0.0.1:8081/figurinhas/fig1.gif' width='72' height='72' alt='Figurinha'><br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='20' height='20'><font color='Blue'>Joao</font><b> Fala: </b>Opa<br>
+<img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='20' height='20'><font color='Blue'>Joao</font><b><i><u> Grita: </u></i></b><font color='Red' size='+1'>OPA</font><br>
