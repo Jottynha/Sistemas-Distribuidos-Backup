@@ -257,7 +257,7 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
             BtnAtivarWeb.setText("Desativar");
 
             LBLSrvWeb.setText(
-                    "Servidor Web ativado - Porta 8081"
+                    "Servidor Web HTTPS ativado - Porta 8443"
             );
 
             LBLSrvWeb.setForeground(
@@ -298,6 +298,20 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         if (resposta == JOptionPane.YES_OPTION) {
 
             Util.pararServidorWeb();
+            // O coletor depende do servidor HTTPS.
+            if (BtnAtivarLog.isSelected()) {
+
+                BtnAtivarLog.setSelected(false);
+                BtnAtivarLog.setText("Ativar");
+
+                LBLLog.setText(
+                        "Erros dos clientes Desktop, Web e outros"
+                );
+
+                LBLLog.setForeground(
+                        new java.awt.Color(255, 0, 0)
+                );
+            }
 
             BtnAtivarWeb.setText("Ativar");
 
@@ -345,7 +359,7 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
             BtnAtivarLog.setText("Desativar");
 
             LBLLog.setText(
-                    "Coletor ativo - Porta 8082"
+                    "Coletor HTTPS ativo - Porta 8443"
             );
 
             LBLLog.setForeground(

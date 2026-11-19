@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 import java.awt.event.KeyEvent;
-import java.net.Socket;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import java.awt.BorderLayout;
@@ -27,12 +26,12 @@ import javax.swing.SwingUtilities;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.awt.Image;
 import javax.swing.JOptionPane;
+import javax.net.ssl.SSLSocket;
 
 public class FrmChat extends javax.swing.JFrame {
     private volatile boolean emManutencao = false;
@@ -120,19 +119,13 @@ public class FrmChat extends javax.swing.JFrame {
             boolean conexaoEstabelecida = false;
 
             
-        try (Socket cliente = new Socket()) {
-
-            cliente.connect(
-                    new InetSocketAddress(
-                            Util.Servidor,
-                            Util.PortaRecepcaoJson
-                    ),
-                    5000
-            );
+            try (SSLSocket cliente =
+            ConfiguracaoTLSCliente.conectar(
+                    Util.Servidor,
+                    Util.PortaRecepcaoJsonTLS
+            )) {
 
             conexaoEstabelecida = true;
-
-            cliente.setSoTimeout(10000);
 
             // Monta a mensagem no protocolo JSON.
             ChatMessage requisicao = new ChatMessage(
@@ -254,6 +247,23 @@ public class FrmChat extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmChat.class.getName());
     public FrmChat() {
+        try {
+
+            ConfiguracaoTLSCliente.inicializar();
+
+        } catch (IOException erro) {
+
+            reportarErro("inicializarTLS", erro);
+
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Nao foi possivel inicializar a confianca TLS.\n"
+                    + erro.getMessage(),
+                    "Erro de seguranca",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+
         initComponents();
         configurarPopupEmojis();
         iniciarMonitorServidor();
@@ -878,18 +888,11 @@ public class FrmChat extends javax.swing.JFrame {
 
             while (!Thread.currentThread().isInterrupted()) {
 
-                try (Socket cliente = new Socket()) {
-
-                    
-        cliente.connect(
-                new InetSocketAddress(
-                        Util.Servidor,
-                        Util.PortaRecepcaoJson
-                ),
-                5000
-        );
-
-        cliente.setSoTimeout(10000);
+                try (SSLSocket cliente =
+                    ConfiguracaoTLSCliente.conectar(
+                            Util.Servidor,
+                            Util.PortaRecepcaoJsonTLS
+                    )) {
 
         String mensagens;
 
@@ -1002,9 +1005,9 @@ public class FrmChat extends javax.swing.JFrame {
                                 try {
                                     doc.setBase(
                                             new URL(
-                                                    "http",
+                                                    "https",
                                                     Util.Servidor,
-                                                    Util.PortaWeb,
+                                                    Util.PortaWebTLS,
                                                     "/"
                                             )
                                     );

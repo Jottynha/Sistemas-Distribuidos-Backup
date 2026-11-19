@@ -1,83 +1,167 @@
+
 package pacote;
 
 import protocolo.ChatMessage;
 import protocolo.JsonProtocol;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import java.time.Instant;
-import java.util.Map;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsParameters;
+import com.sun.net.httpserver.HttpsServer;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
+
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+
+import java.security.GeneralSecurityException;
+
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 public class Util {
-    // PORTAS
+
+    // =========================================================
+    // 1. PORTAS
+    // =========================================================
+
+    // Portas antigas: mantidas apenas para compatibilidade
+    // com as classes legadas que ainda existem no projeto.
+    @Deprecated
     public static final int PortaEnvioDesktop = 6661;
+
+    @Deprecated
     public static final int PortaRecepcaoDesktop = 6662;
+
+    @Deprecated
     public static final int PortaRecepcaoJson = 6663;
+
+    @Deprecated
     public static final int PortaWeb = 8081;
+
+    @Deprecated
     public static final int PortaLogs = 8082;
-    // DIRETORIOS: sempre relativos a pasta do modulo/JAR, nao ao terminal.
-    private static final Path DiretorioBase = localizarDiretorioBase();
-    public static final Path DiretorioDados = DiretorioBase.resolve("data");
-    public static final Path DiretorioLogs = DiretorioDados.resolve("logs");
-    public static final Path DiretorioFigurinhas = DiretorioBase.resolve("figurinhas");
+
+    // Portas definitivas.
+    public static final int PortaRecepcaoJsonTLS = 6664;
+    public static final int PortaWebTLS = 8443;
+
+    // =========================================================
+    // 2. DIRETORIOS
+    // =========================================================
+
+    private static final Path DiretorioBase =
+            localizarDiretorioBase();
+
+    public static final Path DiretorioDados =
+            DiretorioBase.resolve("data");
+
+    public static final Path DiretorioLogs =
+            DiretorioDados.resolve("logs");
+
+    public static final Path DiretorioFigurinhas =
+            DiretorioBase.resolve("figurinhas");
+
     public static final String PathRepDesktop =
-            DiretorioDados.resolve("RepositorioDesktop.txt").toString();
-    // THREADS DESKTOP EXISTENTES
+            DiretorioDados.resolve(
+                    "RepositorioDesktop.txt"
+            ).toString();
+
+    // =========================================================
+    // 3. CONTROLE DOS SERVICOS DESKTOP
+    // =========================================================
+
+    // Os dois servidores abaixo sao legados e nao serao
+    // mais inicializados.
     public static DesktopRecepcaoThread desktopRecepcaoThread;
     public static DesktopEnvioThread desktopEnvioThread;
+
     public static DesktopJsonRecepcaoThread desktopJsonRecepcaoThread;
-    // HISTORICO COMPARTILHADO
-    private static final List<String> historicoMensagens = new ArrayList<>();
+
+    // =========================================================
+    // 4. HISTORICO COMPARTILHADO
+    // =========================================================
+
+    private static final List<String> historicoMensagens =
+            new ArrayList<>();
+
     private static final ReentrantReadWriteLock travaHistorico =
             new ReentrantReadWriteLock(true);
+
     private static boolean historicoInicializado = false;
-    // SERVIDORES WEB E LOGS
-    private static HttpServer servidorWeb;
-    private static HttpServer coletorLogs;
-    private static ExecutorService executorWeb;
-    private static ExecutorService executorLogs;
-    // SINCRONIZACAO DOS ARQUIVOS DE LOG
+
+    // =========================================================
+    // 5. SERVIDOR HTTPS
+    // =========================================================
+
+    private static HttpsServer servidorWebTLS;
+
+    private static ExecutorService executorWebTLS;
+
+    // O coletor utiliza o mesmo servidor HTTPS.
+    private static volatile boolean coletorLogsAtivo = false;
+
+    // =========================================================
+    // 6. CONTROLE DOS ARQUIVOS DE LOG
+    // =========================================================
+
     private static final ConcurrentMap<Path, Object> travasArquivos =
             new ConcurrentHashMap<>();
+
     private static final DateTimeFormatter FORMATO_DATA =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            DateTimeFormatter.ofPattern(
+                    "yyyy-MM-dd HH:mm:ss"
+            );
+
     private Util() {
     }
 
-    /**
-     * Descobre a pasta do modulo a partir da classe compilada ou do JAR.
-     * Pode ser sobrescrita por -Dchat.server.baseDir=... ou CHAT_SERVER_BASE_DIR.
-     */
+    // =========================================================
+    // 7. LOCALIZACAO DO DIRETORIO BASE
+    // =========================================================
+
     private static Path localizarDiretorioBase() {
 
-        String configurado = System.getProperty("chat.server.baseDir");
+        String configurado =
+                System.getProperty("chat.server.baseDir");
+
         if (configurado == null || configurado.isBlank()) {
             configurado = System.getenv("CHAT_SERVER_BASE_DIR");
         }
+
         if (configurado != null && !configurado.isBlank()) {
-            return Path.of(configurado).toAbsolutePath().normalize();
+
+            return Path.of(configurado)
+                    .toAbsolutePath()
+                    .normalize();
         }
 
         try {
+
             Path local = Path.of(
                     Util.class.getProtectionDomain()
                             .getCodeSource()
@@ -85,40 +169,58 @@ public class Util {
                             .toURI()
             ).toAbsolutePath().normalize();
 
-            // NetBeans/Maven: .../Chat_Middleware_Service/target/classes
+            // NetBeans/Maven:
+            // .../Chat_Middleware_Service/target/classes
             if (Files.isDirectory(local)) {
+
                 Path parent = local.getParent();
+
                 if (local.getFileName() != null
                         && local.getFileName().toString().equals("classes")
                         && parent != null
                         && parent.getFileName() != null
                         && parent.getFileName().toString().equals("target")
                         && parent.getParent() != null) {
+
                     return parent.getParent();
                 }
+
                 return local;
             }
 
-            // JAR: .../Chat_Middleware_Service/target/aplicacao.jar
+            // JAR:
+            // .../Chat_Middleware_Service/target/aplicacao.jar
             Path parent = local.getParent();
+
             if (parent != null
                     && parent.getFileName() != null
                     && parent.getFileName().toString().equals("target")
                     && parent.getParent() != null) {
+
                 return parent.getParent();
             }
-            return parent != null ? parent : Path.of(System.getProperty("user.dir"));
+
+            return parent != null
+                    ? parent
+                    : Path.of(System.getProperty("user.dir"));
 
         } catch (Exception erro) {
-            System.err.println("Nao foi possivel localizar a pasta do middleware: "
-                    + erro.getMessage());
-            return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+
+            System.err.println(
+                    "Nao foi possivel localizar a pasta do middleware: "
+                    + erro.getMessage()
+            );
+
+            return Path.of(
+                    System.getProperty("user.dir")
+            ).toAbsolutePath().normalize();
         }
     }
 
     // =========================================================
-    // 1. HISTORICO EM RAM E TXT
+    // 8. HISTORICO EM RAM E TXT
     // =========================================================
+
     public static synchronized void inicializarRepositorio()
             throws IOException {
 
@@ -129,15 +231,24 @@ public class Util {
         Files.createDirectories(DiretorioDados);
         Files.createDirectories(DiretorioLogs);
         Files.createDirectories(DiretorioFigurinhas);
-        Files.createDirectories(DiretorioFigurinhas.resolve("avatars"));
 
-        System.out.println("========== DIRETORIOS DO MIDDLEWARE ==========");
+        Files.createDirectories(
+                DiretorioFigurinhas.resolve("avatars")
+        );
+
+        System.out.println(
+                "========== DIRETORIOS DO MIDDLEWARE =========="
+        );
+
         System.out.println("Base: " + DiretorioBase);
         System.out.println("Dados: " + DiretorioDados);
         System.out.println("Logs: " + DiretorioLogs);
         System.out.println("Figurinhas: " + DiretorioFigurinhas);
         System.out.println("Historico: " + PathRepDesktop);
-        System.out.println("==============================================");
+
+        System.out.println(
+                "=============================================="
+        );
 
         Path arquivoHistorico = Path.of(PathRepDesktop);
 
@@ -168,9 +279,11 @@ public class Util {
         travaHistorico.writeLock().lock();
 
         try {
+
             historicoMensagens.clear();
 
             for (String linha : linhas) {
+
                 if (linha != null && !linha.isBlank()) {
                     historicoMensagens.add(linha);
                 }
@@ -198,6 +311,7 @@ public class Util {
         inicializarRepositorio();
 
         if (mensagem == null || mensagem.isBlank()) {
+
             throw new IllegalArgumentException(
                     "A mensagem nao pode ser vazia."
             );
@@ -231,7 +345,8 @@ public class Util {
                     // Corrige arquivos antigos sem quebra de linha final.
                     if (tamanhoOriginal > 0) {
 
-                        ByteBuffer ultimoByte = ByteBuffer.allocate(1);
+                        ByteBuffer ultimoByte =
+                                ByteBuffer.allocate(1);
 
                         canal.position(tamanhoOriginal - 1);
                         canal.read(ultimoByte);
@@ -265,9 +380,12 @@ public class Util {
 
                     // Tenta desfazer uma gravacao incompleta.
                     try {
+
                         canal.truncate(tamanhoOriginal);
                         canal.force(true);
+
                     } catch (IOException erroRollback) {
+
                         erro.addSuppressed(erroRollback);
                     }
 
@@ -304,6 +422,7 @@ public class Util {
 
         try {
             return List.copyOf(historicoMensagens);
+
         } finally {
             travaHistorico.readLock().unlock();
         }
@@ -319,7 +438,7 @@ public class Util {
     }
 
     // =========================================================
-    // 2. CONTROLE DO SERVICO DESKTOP
+    // 9. SERVIDOR DESKTOP: SOMENTE JSON TLS
     // =========================================================
 
     public static synchronized void iniciarDesktop()
@@ -327,23 +446,8 @@ public class Util {
 
         inicializarRepositorio();
 
-        if (desktopRecepcaoThread == null) {
-
-            desktopRecepcaoThread = new DesktopRecepcaoThread();
-
-            Thread.ofVirtual()
-                    .name("desktop-recepcao")
-                    .start(desktopRecepcaoThread);
-        }
-
-        if (desktopEnvioThread == null) {
-
-            desktopEnvioThread = new DesktopEnvioThread();
-
-            Thread.ofVirtual()
-                    .name("desktop-envio")
-                    .start(desktopEnvioThread);
-        }
+        // Os servidores antigos das portas 6661 e 6662
+        // nao sao mais inicializados.
 
         if (desktopJsonRecepcaoThread == null) {
 
@@ -351,37 +455,46 @@ public class Util {
                     new DesktopJsonRecepcaoThread();
 
             Thread.ofVirtual()
-                    .name("desktop-json-recepcao")
+                    .name("desktop-json-tls")
                     .start(desktopJsonRecepcaoThread);
         }
+
+        System.out.println(
+                "Servico Desktop seguro configurado na porta "
+                + PortaRecepcaoJsonTLS
+        );
     }
 
     public static synchronized void pararDesktop() {
 
+        // Fecha qualquer instancia antiga que ainda exista.
         if (desktopRecepcaoThread != null) {
+
             desktopRecepcaoThread.fecharServidor();
             desktopRecepcaoThread = null;
         }
 
         if (desktopEnvioThread != null) {
+
             desktopEnvioThread.fecharServidor();
             desktopEnvioThread = null;
         }
 
         if (desktopJsonRecepcaoThread != null) {
+
             desktopJsonRecepcaoThread.fecharServidor();
             desktopJsonRecepcaoThread = null;
         }
     }
 
     // =========================================================
-    // 3. SERVIDOR WEB HTTP
+    // 10. SERVIDOR WEB: SOMENTE HTTPS
     // =========================================================
 
     public static synchronized void iniciarServidorWeb()
             throws IOException {
 
-        if (servidorWeb != null) {
+        if (servidorWebTLS != null) {
             return;
         }
 
@@ -389,15 +502,83 @@ public class Util {
 
         Files.createDirectories(DiretorioFigurinhas);
 
-        HttpServer servidor = HttpServer.create(
-                new InetSocketAddress("0.0.0.0", PortaWeb),
+        SSLContext contexto;
+
+        try {
+
+            contexto = ConfiguracaoTLS.criarContextoServidor();
+
+        } catch (GeneralSecurityException erro) {
+
+            throw new IOException(
+                    "Nao foi possivel carregar a configuracao TLS.",
+                    erro
+            );
+        }
+
+        HttpsServer servidor = HttpsServer.create(
+                new InetSocketAddress("0.0.0.0", PortaWebTLS),
                 0
         );
+
+        servidor.setHttpsConfigurator(
+                new HttpsConfigurator(contexto) {
+
+            @Override
+            public void configure(HttpsParameters parametros) {
+
+                SSLContext sslContexto = getSSLContext();
+
+                SSLParameters parametrosSSL =
+                        sslContexto.getDefaultSSLParameters();
+
+                parametrosSSL.setProtocols(
+                        new String[]{
+                            "TLSv1.3",
+                            "TLSv1.2"
+                        }
+                );
+
+                parametros.setSSLParameters(parametrosSSL);
+            }
+        });
 
         ExecutorService executor =
                 Executors.newVirtualThreadPerTaskExecutor();
 
+        configurarRotasWeb(servidor);
+
         servidor.setExecutor(executor);
+
+        try {
+
+            servidor.start();
+
+            servidorWebTLS = servidor;
+            executorWebTLS = executor;
+
+            System.out.println(
+                    "Servico Web HTTPS ativo na porta "
+                    + PortaWebTLS
+            );
+
+        } catch (RuntimeException erro) {
+
+            servidor.stop(0);
+            executor.shutdownNow();
+
+            throw new IOException(
+                    "Nao foi possivel iniciar o servidor HTTPS.",
+                    erro
+            );
+        }
+    }
+
+    /**
+     * Todos os endpoints sao registrados exclusivamente
+     * no servidor HTTPS.
+     */
+    private static void configurarRotasWeb(HttpServer servidor) {
 
         servidor.createContext(
                 "/api/messages",
@@ -408,6 +589,7 @@ public class Util {
                 "/api/stickers",
                 Util::listarFigurinhas
         );
+
         servidor.createContext(
                 "/api/avatars",
                 Util::listarAvatares
@@ -424,6 +606,11 @@ public class Util {
         );
 
         servidor.createContext(
+                "/api/logs",
+                Util::receberLogCliente
+        );
+
+        servidor.createContext(
                 "/health",
                 troca -> responder(
                         troca,
@@ -432,31 +619,73 @@ public class Util {
                         "text/plain; charset=UTF-8"
                 )
         );
-
-        servidor.start();
-
-        servidorWeb = servidor;
-        executorWeb = executor;
-
-        System.out.println(
-                "Servico Web ativo na porta " + PortaWeb
-        );
     }
 
     public static synchronized void pararServidorWeb() {
 
-        if (servidorWeb != null) {
-            servidorWeb.stop(0);
-            servidorWeb = null;
+        if (servidorWebTLS != null) {
+
+            servidorWebTLS.stop(0);
+            servidorWebTLS = null;
         }
 
-        if (executorWeb != null) {
-            executorWeb.shutdownNow();
-            executorWeb = null;
+        if (executorWebTLS != null) {
+
+            executorWebTLS.shutdownNow();
+            executorWebTLS = null;
         }
+
+        // O coletor nao pode permanecer ativo sem o HTTPS.
+        coletorLogsAtivo = false;
+
+        System.out.println(
+                "Servico Web HTTPS encerrado."
+        );
     }
 
-    
+    // =========================================================
+    // 11. COLETOR DE LOGS INTEGRADO AO HTTPS
+    // =========================================================
+
+    /**
+     * Ativa o endpoint /api/logs no servidor HTTPS existente.
+     * Nao cria outro servidor nem abre outra porta.
+     */
+    public static synchronized void iniciarColetorLogs()
+            throws IOException {
+
+        if (servidorWebTLS == null) {
+
+            throw new IOException(
+                    "Ative o servidor Web HTTPS antes do coletor de logs."
+            );
+        }
+
+        coletorLogsAtivo = true;
+
+        System.out.println(
+                "Coletor de logs HTTPS ativo na porta "
+                + PortaWebTLS
+        );
+    }
+
+    /**
+     * Desativa somente o recebimento de logs.
+     * O servidor HTTPS continua funcionando.
+     */
+    public static synchronized void pararColetorLogs() {
+
+        coletorLogsAtivo = false;
+
+        System.out.println(
+                "Coletor de logs HTTPS desativado."
+        );
+    }
+
+    // =========================================================
+    // 12. API DE MENSAGENS JSON
+    // =========================================================
+
     private static void atenderMensagensWeb(
             HttpExchange troca) throws IOException {
 
@@ -465,20 +694,9 @@ public class Util {
         String metodo = troca.getRequestMethod();
 
         if ("OPTIONS".equalsIgnoreCase(metodo)) {
+
             troca.sendResponseHeaders(204, -1);
             troca.close();
-            return;
-        }
-
-        // Mantem o GET antigo temporariamente para compatibilidade.
-        if ("GET".equalsIgnoreCase(metodo)) {
-
-            responder(
-                    troca,
-                    200,
-                    obterHistoricoHtml(),
-                    "text/html; charset=UTF-8"
-            );
 
             return;
         }
@@ -502,10 +720,10 @@ public class Util {
 
         ChatMessage requisicao;
 
-        // Primeiro, interpreta o JSON.
         try {
 
             if (corpo.isBlank()) {
+
                 throw new IllegalArgumentException(
                         "Corpo da requisicao vazio."
                 );
@@ -536,6 +754,7 @@ public class Util {
             // ---------------------------------------------
             // CONSULTA DO HISTORICO
             // ---------------------------------------------
+
             if (requisicao.type()
                     == ChatMessage.Type.HISTORY_REQUEST) {
 
@@ -591,7 +810,7 @@ public class Util {
                 );
 
                 System.out.println(
-                        "Historico JSON HTTP enviado para "
+                        "Historico JSON HTTPS enviado para "
                         + requisicao.sender()
                         + " | IP: " + ipRemoto(troca)
                 );
@@ -602,6 +821,7 @@ public class Util {
             // ---------------------------------------------
             // ENVIO DE MENSAGEM
             // ---------------------------------------------
+
             if (requisicao.type()
                     == ChatMessage.Type.SEND_MESSAGE) {
 
@@ -646,8 +866,7 @@ public class Util {
                 String mensagemHtml =
                         RenderizadorMensagemHtml.renderizar(requisicao);
 
-                // Persistencia temporaria no repositorio atual.
-                Util.adicionarMensagem(mensagemHtml);
+                adicionarMensagem(mensagemHtml);
 
                 ChatMessage confirmacao = new ChatMessage(
 
@@ -682,7 +901,7 @@ public class Util {
                 );
 
                 System.out.println(
-                        "Mensagem JSON HTTP recebida de "
+                        "Mensagem JSON HTTPS recebida de "
                         + requisicao.sender()
                         + " | IP: " + ipRemoto(troca)
                 );
@@ -693,6 +912,7 @@ public class Util {
             // ---------------------------------------------
             // OPERACAO NAO SUPORTADA
             // ---------------------------------------------
+
             responder(
                     troca,
                     400,
@@ -710,7 +930,7 @@ public class Util {
 
             registrarErroServidor(
                     "web",
-                    "INTERNO/HTTP",
+                    "INTERNO/HTTPS",
                     ipRemoto(troca),
                     "Util.atenderMensagensWeb",
                     erro
@@ -762,19 +982,22 @@ public class Util {
         );
     }
 
-
-    /**
-     * Lista as figurinhas que estao na pasta central.
-     */
+    // =========================================================
+    // 13. LISTAGEM DE FIGURINHAS E AVATARES
+    // =========================================================
 
     private static void listarFigurinhas(
             HttpExchange troca) throws IOException {
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+
             responder(
-                    troca, 405, "Metodo nao permitido",
+                    troca,
+                    405,
+                    "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
+
             return;
         }
 
@@ -784,15 +1007,18 @@ public class Util {
         );
     }
 
-
     private static void listarAvatares(
             HttpExchange troca) throws IOException {
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+
             responder(
-                    troca, 405, "Metodo nao permitido",
+                    troca,
+                    405,
+                    "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
+
             return;
         }
 
@@ -807,7 +1033,6 @@ public class Util {
         );
     }
 
-
     private static void listarImagensDoDiretorio(
             HttpExchange troca,
             Path diretorio) throws IOException {
@@ -819,7 +1044,9 @@ public class Util {
                     .map(path -> path.getFileName().toString())
                     .filter(Util::ehArquivoImagem)
                     .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(java.util.stream.Collectors.joining("\n"));
+                    .collect(
+                            java.util.stream.Collectors.joining("\n")
+                    );
 
             responder(
                     troca,
@@ -832,7 +1059,7 @@ public class Util {
 
             registrarErroServidor(
                     "web",
-                    "INTERNO/NÃO APLICÁVEL",
+                    "INTERNO/HTTPS",
                     ipRemoto(troca),
                     "Util.listarImagensDoDiretorio",
                     erro
@@ -849,9 +1076,7 @@ public class Util {
 
     private static boolean ehArquivoImagem(String nome) {
 
-        String extensao = nome.toLowerCase(
-                java.util.Locale.ROOT
-        );
+        String extensao = nome.toLowerCase(Locale.ROOT);
 
         return extensao.endsWith(".png")
                 || extensao.endsWith(".gif")
@@ -860,15 +1085,22 @@ public class Util {
                 || extensao.endsWith(".webp");
     }
 
+    // =========================================================
+    // 14. EMOJIS
+    // =========================================================
 
     private static void listarEmojis(
             HttpExchange troca) throws IOException {
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+
             responder(
-                    troca, 405, "Metodo nao permitido",
+                    troca,
+                    405,
+                    "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
+
             return;
         }
 
@@ -885,19 +1117,22 @@ public class Util {
         );
     }
 
-
-
-
-
+    // =========================================================
+    // 15. SERVIR FIGURINHAS E AVATARES
+    // =========================================================
 
     private static void servirFigurinha(
             HttpExchange troca) throws IOException {
 
         if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+
             responder(
-                    troca, 405, "Metodo nao permitido",
+                    troca,
+                    405,
+                    "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
+
             return;
         }
 
@@ -912,20 +1147,21 @@ public class Util {
                     StandardCharsets.UTF_8
             );
 
-            Path raiz = DiretorioFigurinhas
-                    .toRealPath();
+            Path raiz = DiretorioFigurinhas.toRealPath();
 
-            Path arquivo = raiz.resolve(caminho)
-                    .normalize();
+            Path arquivo = raiz.resolve(caminho).normalize();
 
             // Impede acesso a arquivos fora da pasta central.
             if (!arquivo.startsWith(raiz)
                     || !Files.isRegularFile(arquivo)) {
 
                 responder(
-                        troca, 404, "Imagem nao encontrada",
+                        troca,
+                        404,
+                        "Imagem nao encontrada",
                         "text/plain; charset=UTF-8"
                 );
+
                 return;
             }
 
@@ -933,19 +1169,24 @@ public class Util {
             arquivo = arquivo.toRealPath();
 
             if (!arquivo.startsWith(raiz)) {
+
                 responder(
-                        troca, 404, "Imagem nao encontrada",
+                        troca,
+                        404,
+                        "Imagem nao encontrada",
                         "text/plain; charset=UTF-8"
                 );
+
                 return;
             }
 
             String nome = arquivo.getFileName()
                     .toString()
-                    .toLowerCase(java.util.Locale.ROOT);
+                    .toLowerCase(Locale.ROOT);
 
-            String tipo = switch (nome.substring(
-                    nome.lastIndexOf('.') + 1)) {
+            String tipo = switch (
+                    nome.substring(nome.lastIndexOf('.') + 1)
+            ) {
 
                 case "png" -> "image/png";
                 case "gif" -> "image/gif";
@@ -958,19 +1199,23 @@ public class Util {
             byte[] imagem = Files.readAllBytes(arquivo);
 
             troca.getResponseHeaders().set(
-                    "Content-Type", tipo
+                    "Content-Type",
+                    tipo
             );
 
             troca.getResponseHeaders().set(
-                    "Cache-Control", "public, max-age=3600"
+                    "Cache-Control",
+                    "public, max-age=3600"
             );
 
             troca.getResponseHeaders().set(
-                    "X-Content-Type-Options", "nosniff"
+                    "X-Content-Type-Options",
+                    "nosniff"
             );
 
             troca.getResponseHeaders().set(
-                    "Access-Control-Allow-Origin", "*"
+                    "Access-Control-Allow-Origin",
+                    "*"
             );
 
             troca.sendResponseHeaders(200, imagem.length);
@@ -982,7 +1227,9 @@ public class Util {
         } catch (java.nio.file.NoSuchFileException erro) {
 
             responder(
-                    troca, 404, "Imagem nao encontrada",
+                    troca,
+                    404,
+                    "Imagem nao encontrada",
                     "text/plain; charset=UTF-8"
             );
 
@@ -990,70 +1237,24 @@ public class Util {
 
             registrarErroServidor(
                     "web",
-                    "INTERNO/NÃO APLICÁVEL",
+                    "INTERNO/HTTPS",
                     ipRemoto(troca),
                     "Util.servirFigurinha",
                     erro
             );
 
             responder(
-                    troca, 500, "Erro ao carregar imagem",
+                    troca,
+                    500,
+                    "Erro ao carregar imagem",
                     "text/plain; charset=UTF-8"
             );
         }
     }
 
-
     // =========================================================
-    // 4. COLETOR UNICO DE LOGS DOS CLIENTES
+    // 16. COLETOR DE LOGS HTTPS
     // =========================================================
-
-    public static synchronized void iniciarColetorLogs()
-            throws IOException {
-
-        if (coletorLogs != null) {
-            return;
-        }
-
-        Files.createDirectories(DiretorioLogs);
-
-        HttpServer servidor = HttpServer.create(
-                new InetSocketAddress("0.0.0.0", PortaLogs),
-                0
-        );
-
-        ExecutorService executor =
-                Executors.newVirtualThreadPerTaskExecutor();
-
-        servidor.setExecutor(executor);
-
-        servidor.createContext(
-                "/api/logs",
-                Util::receberLogCliente
-        );
-
-        servidor.start();
-
-        coletorLogs = servidor;
-        executorLogs = executor;
-
-        System.out.println(
-                "Coletor de logs ativo na porta " + PortaLogs
-        );
-    }
-
-    public static synchronized void pararColetorLogs() {
-
-        if (coletorLogs != null) {
-            coletorLogs.stop(0);
-            coletorLogs = null;
-        }
-
-        if (executorLogs != null) {
-            executorLogs.shutdownNow();
-            executorLogs = null;
-        }
-    }
 
     /**
      * Formato do POST:
@@ -1067,16 +1268,34 @@ public class Util {
         adicionarCabecalhosCors(troca);
 
         if ("OPTIONS".equalsIgnoreCase(troca.getRequestMethod())) {
+
             troca.sendResponseHeaders(204, -1);
             troca.close();
+
             return;
         }
 
         if (!"POST".equalsIgnoreCase(troca.getRequestMethod())) {
+
             responder(
-                    troca, 405, "Metodo nao permitido",
+                    troca,
+                    405,
+                    "Metodo nao permitido",
                     "text/plain; charset=UTF-8"
             );
+
+            return;
+        }
+
+        if (!coletorLogsAtivo) {
+
+            responder(
+                    troca,
+                    503,
+                    "Coletor de logs desativado.",
+                    "text/plain; charset=UTF-8"
+            );
+
             return;
         }
 
@@ -1090,10 +1309,14 @@ public class Util {
             String[] campos = corpo.split("\\t", 4);
 
             if (campos.length < 4) {
+
                 responder(
-                        troca, 400, "Formato de log invalido",
+                        troca,
+                        400,
+                        "Formato de log invalido",
                         "text/plain; charset=UTF-8"
                 );
+
                 return;
             }
 
@@ -1106,7 +1329,9 @@ public class Util {
             );
 
             responder(
-                    troca, 200, "OK",
+                    troca,
+                    200,
+                    "OK",
                     "text/plain; charset=UTF-8"
             );
 
@@ -1114,21 +1339,23 @@ public class Util {
 
             registrarErroServidor(
                     "internal",
-                    "INTERNO/NÃO APLICÁVEL",
+                    "INTERNO/HTTPS",
                     ipRemoto(troca),
                     "Util.receberLogCliente",
                     erro
             );
 
             responder(
-                    troca, 500, "Erro ao registrar log",
+                    troca,
+                    500,
+                    "Erro ao registrar log",
                     "text/plain; charset=UTF-8"
             );
         }
     }
 
     // =========================================================
-    // 5. REGISTRO DE ERROS
+    // 17. REGISTRO DE ERROS
     // =========================================================
 
     /**
@@ -1164,11 +1391,6 @@ public class Util {
 
     /**
      * Grava erros internos do middleware.
-     *
-     * Exemplo:
-     * server_middleware_desktop_errors.log
-     * server_middleware_web_errors.log
-     * server_middleware_internal_errors.log
      */
     public static void registrarErroServidor(
             String servico,
@@ -1244,7 +1466,7 @@ public class Util {
     }
 
     // =========================================================
-    // 6. METODOS AUXILIARES
+    // 18. METODOS AUXILIARES
     // =========================================================
 
     private static void responder(
@@ -1256,7 +1478,8 @@ public class Util {
         byte[] bytes = corpo.getBytes(StandardCharsets.UTF_8);
 
         troca.getResponseHeaders().set(
-                "Content-Type", contentType
+                "Content-Type",
+                contentType
         );
 
         adicionarCabecalhosCors(troca);
@@ -1272,7 +1495,8 @@ public class Util {
             HttpExchange troca) {
 
         troca.getResponseHeaders().set(
-                "Access-Control-Allow-Origin", "*"
+                "Access-Control-Allow-Origin",
+                "*"
         );
 
         troca.getResponseHeaders().set(
@@ -1281,7 +1505,13 @@ public class Util {
         );
 
         troca.getResponseHeaders().set(
-                "Access-Control-Allow-Headers", "Content-Type"
+                "Access-Control-Allow-Headers",
+                "Content-Type"
+        );
+
+        troca.getResponseHeaders().set(
+                "Strict-Transport-Security",
+                "max-age=31536000"
         );
     }
 
@@ -1299,6 +1529,7 @@ public class Util {
     }
 
     private static String dataHora() {
+
         return LocalDateTime.now().format(FORMATO_DATA);
     }
 
@@ -1334,15 +1565,28 @@ public class Util {
         String valor = normalizarTipo(servico);
 
         return switch (valor) {
+
             case "desktop", "web", "internal" -> valor;
+
             default -> "internal";
         };
     }
+
+    // =========================================================
+    // 19. ENCERRAMENTO GERAL
+    // =========================================================
+
     public static synchronized void pararTodosServicos() {
-        pararDesktop();
-        pararServidorWeb();
+
         pararColetorLogs();
-    } 
+        pararServidorWeb();
+        pararDesktop();
+    }
+
+    // =========================================================
+    // 20. EMOJIS COMPARTILHADOS
+    // =========================================================
+
     private static final String[] EMOJIS_COMPARTILHADOS = {
         "😀", "😁", "😂", "🤣", "😅", "😊",
         "😍", "😎", "😘", "😜", "😢", "😭",
@@ -1350,5 +1594,4 @@ public class Util {
         "👍", "👎", "👏", "🙏", "❤️", "💔",
         "🔥", "🎉", "💯", "🤝", "👀", "💀"
     };
-
 }

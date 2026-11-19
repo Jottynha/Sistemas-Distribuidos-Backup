@@ -31,7 +31,7 @@
     session.setAttribute("Avatar", avatar);
 
     String coletor = application.getInitParameter("log.collector.publicUrl");
-    if (coletor == null || coletor.isBlank()) coletor = "http://127.0.0.1:8082/api/logs";
+    if (coletor == null || coletor.isBlank()) coletor = "https://127.0.0.1:8443/api/logs";
 %>
 <!DOCTYPE html>
 <html lang="pt-BR">

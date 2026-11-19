@@ -2,10 +2,12 @@
 package pacote;
 
 public class Util {
+
     // Dados do usuario
     public static String nickname = "";
     public static String cor = "";
     public static String avatar = "";
+
     // Endereco do middleware
     public static final String Servidor =
             System.getProperty(
@@ -15,30 +17,37 @@ public class Util {
                             "127.0.0.1"
                     )
             );
-    // Portas TCP
-    public static final int PortaEnvioDesktop = 6661;
-    public static final int PortaRecepcaoDesktop = 6662;
-    public static final int PortaRecepcaoJson = 6663;
-    // Portas HTTP
-    public static final int PortaWeb = 8081;
-    public static final int PortaLogs = 8082;
-    // URLs dos servicos
+
+    // Canais seguros
+    public static final int PortaRecepcaoJsonTLS = 6664;
+    public static final int PortaWebTLS = 8443;
+
+    // URLs HTTPS dos servicos centralizados
     public static final String URL_FIGURINHAS =
-            "http://" + Servidor + ":" + PortaWeb + "/figurinhas/";
+            "https://" + Servidor + ":" + PortaWebTLS
+            + "/figurinhas/";
+
     public static final String URL_API_STICKERS =
-            "http://" + Servidor + ":" + PortaWeb + "/api/stickers";
+            "https://" + Servidor + ":" + PortaWebTLS
+            + "/api/stickers";
+
     public static final String URL_COLETOR_LOGS =
-            "http://" + Servidor + ":" + PortaLogs + "/api/logs";
+            "https://" + Servidor + ":" + PortaWebTLS
+            + "/api/logs";
+
     /**
-     * Gera a URL de um avatar armazenado no servidor.
+     * Gera a URL HTTPS de um avatar armazenado no middleware.
      */
     public static String obterURLAvatar() {
+
         if (avatar == null || avatar.isBlank()) {
             return "";
         }
+
         String nomeArquivo = avatar.substring(
                 avatar.lastIndexOf('/') + 1
         );
+
         return URL_FIGURINHAS
                 + "avatars/"
                 + java.net.URLEncoder.encode(

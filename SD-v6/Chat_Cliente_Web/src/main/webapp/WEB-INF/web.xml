@@ -1,39 +1,31 @@
-<?xml version="1.0" encoding="UTF-8"?>
 
 <web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
-         https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
          version="6.0">
 
     <display-name>Chat Distribuido Web</display-name>
 
-    <!-- Endereco utilizado pelo servidor GlassFish
-         para conversar com o Middleware. -->
+    <!-- Comunicacao com o middleware exclusivamente por HTTPS. -->
     <context-param>
         <param-name>middleware.baseUrl</param-name>
-        <param-value>http://127.0.0.1:8081</param-value>
+        <param-value>https://127.0.0.1:8443</param-value>
     </context-param>
 
-    <!-- Endereco acessivel pelo navegador para carregar
-         figurinhas e avatares centralizados. -->
     <context-param>
         <param-name>middleware.publicBaseUrl</param-name>
-        <param-value>http://127.0.0.1:8081</param-value>
+        <param-value>https://127.0.0.1:8443</param-value>
     </context-param>
 
-    <!-- Endereco utilizado pelo servidor Web para
-         encaminhar erros ao coletor. -->
+    <!-- Coletor de logs integrado ao servidor HTTPS. -->
     <context-param>
         <param-name>log.collector.url</param-name>
-        <param-value>http://127.0.0.1:8082/api/logs</param-value>
+        <param-value>https://127.0.0.1:8443/api/logs</param-value>
     </context-param>
 
-    <!-- Endereco acessivel pelo navegador para
-         enviar erros JavaScript. -->
     <context-param>
         <param-name>log.collector.publicUrl</param-name>
-        <param-value>http://127.0.0.1:8082/api/logs</param-value>
+        <param-value>https://127.0.0.1:8443/api/logs</param-value>
     </context-param>
 
     <session-config>
