@@ -1,8 +1,15 @@
 package pacote;
 
+import protocolo.ChatMessage;
+import protocolo.JsonProtocol;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Map;
 import java.awt.event.KeyEvent;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.Socket;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
@@ -112,66 +119,90 @@ public class FrmChat extends javax.swing.JFrame {
 
             boolean conexaoEstabelecida = false;
 
-            try (Socket cliente = new Socket()) {
+            
+        try (Socket cliente = new Socket()) {
 
-                cliente.connect(
-                        new InetSocketAddress(
-                                Util.Servidor,
-                                Util.PortaRecepcaoDesktop
-                        ),
-                        5000
+            cliente.connect(
+                    new InetSocketAddress(
+                            Util.Servidor,
+                            Util.PortaRecepcaoJson
+                    ),
+                    5000
+            );
+
+            conexaoEstabelecida = true;
+
+            cliente.setSoTimeout(10000);
+
+            // Monta a mensagem no protocolo JSON.
+            ChatMessage requisicao = new ChatMessage(
+                    ChatMessage.CURRENT_VERSION,
+                    null,
+                    null,
+                    ChatMessage.Type.SEND_MESSAGE,
+                    Util.nickname,
+                    "Todos",
+                    conteudoOriginal,
+                    modo.toUpperCase(Locale.ROOT),
+                    Util.cor,
+                    Util.avatar,
+                    "",
+                    Instant.now().toString(),
+                    Map.of(
+                            "clientType", "desktop-java"
+                    )
+            );
+
+            // Serializa e envia a mensagem.
+            BufferedWriter output = new BufferedWriter(
+                    new OutputStreamWriter(
+                            cliente.getOutputStream(),
+                            StandardCharsets.UTF_8
+                    )
+            );
+
+            output.write(JsonProtocol.serializeLine(requisicao));
+            output.flush();
+
+            // Recebe a resposta JSON do middleware.
+            BufferedReader input = new BufferedReader(
+                    new InputStreamReader(
+                            cliente.getInputStream(),
+                            StandardCharsets.UTF_8
+                    )
+            );
+
+            String respostaJson = input.readLine();
+
+            if (respostaJson == null || respostaJson.isBlank()) {
+                throw new IOException(
+                        "Middleware encerrou a conexao sem responder."
                 );
+            }
 
-                conexaoEstabelecida = true;
+            ChatMessage resposta =
+                    JsonProtocol.deserializeLine(respostaJson);
 
-                cliente.setSoTimeout(10000);
+            Object status = resposta.metadata().get("status");
 
-                ObjectOutputStream output =
-                        new ObjectOutputStream(
-                                cliente.getOutputStream()
-                        );
+            if (resposta.type() == ChatMessage.Type.ACK
+                    && "SUCCESS".equalsIgnoreCase(
+                            String.valueOf(status))) {
 
-                output.writeUTF(mensagemParaEnviar);
-                output.flush();
+                SwingUtilities.invokeLater(() -> {
+                    TxtMensagem.setText("");
+                });
 
-                // Aguarda a confirmacao do middleware.
-                ObjectInputStream input =
-                        new ObjectInputStream(
-                                cliente.getInputStream()
-                        );
+            } else {
 
-                String resposta = input.readUTF();
+                String detalhe = resposta.content();
 
-                if ("OK".equals(resposta)) {
-
-                    SwingUtilities.invokeLater(() -> {
-                        TxtMensagem.setText("");
-                    });
-
-                } else {
-
-                    IOException erro = new IOException(
-                            "Middleware recusou a mensagem: " + resposta
-                    );
-
-                    reportarErro(
-                            "gerarEenviarMensagem",
-                            erro
-                    );
-
-                    SwingUtilities.invokeLater(() -> {
-
-                        JOptionPane.showMessageDialog(
-                                this,
-                                "A mensagem nao foi confirmada pelo servidor.\n"
-                                + resposta,
-                                "Falha no envio",
-                                JOptionPane.WARNING_MESSAGE
-                        );
-                    });
-                }
-
-            } catch (Exception e) {
+                throw new IOException(
+                        "Middleware nao confirmou a mensagem: "
+                        + detalhe
+                );
+            }
+        } catch (Exception e) {
                 final boolean conectouAoServidor = conexaoEstabelecida;
                 reportarErro(
                         "gerarEenviarMensagem",
@@ -849,25 +880,93 @@ public class FrmChat extends javax.swing.JFrame {
 
                 try (Socket cliente = new Socket()) {
 
-                    cliente.connect(
-                            new InetSocketAddress(
-                                    Util.Servidor,
-                                    Util.PortaEnvioDesktop
-                            ),
-                            5000
-                    );
+                    
+        cliente.connect(
+                new InetSocketAddress(
+                        Util.Servidor,
+                        Util.PortaRecepcaoJson
+                ),
+                5000
+        );
 
-                    cliente.setSoTimeout(10000);
+        cliente.setSoTimeout(10000);
 
-                    String mensagens;
+        String mensagens;
 
-                    try (ObjectInputStream input =
-                            new ObjectInputStream(
-                                    cliente.getInputStream()
-                            )) {
+        // Monta a requisicao JSON de historico.
+        ChatMessage requisicao = new ChatMessage(
 
-                        mensagens = input.readUTF();
-                    }
+                ChatMessage.CURRENT_VERSION,
+
+                null,
+
+                null,
+
+                ChatMessage.Type.HISTORY_REQUEST,
+
+                Util.nickname,
+
+                "Todos",
+
+                "",
+
+                "", "", "", "",
+
+                Instant.now().toString(),
+
+                Map.of(
+                        "clientType", "desktop-java"
+                )
+        );
+
+        // Envia a requisicao e recebe a resposta JSON.
+        try (
+                BufferedWriter output = new BufferedWriter(
+                        new OutputStreamWriter(
+                                cliente.getOutputStream(),
+                                StandardCharsets.UTF_8
+                        )
+                );
+
+                BufferedReader input = new BufferedReader(
+                        new InputStreamReader(
+                                cliente.getInputStream(),
+                                StandardCharsets.UTF_8
+                        )
+                )
+        ) {
+
+            output.write(JsonProtocol.serializeLine(requisicao));
+            output.flush();
+
+            String linhaResposta = input.readLine();
+
+            if (linhaResposta == null || linhaResposta.isBlank()) {
+                throw new IOException(
+                        "Middleware encerrou a conexao sem responder ao historico."
+                );
+            }
+
+            ChatMessage resposta =
+                    JsonProtocol.deserializeLine(linhaResposta);
+
+            if (resposta.type() != ChatMessage.Type.HISTORY_RESPONSE) {
+                throw new IOException(
+                        "Resposta inesperada do middleware: "
+                        + resposta.content()
+                );
+            }
+
+            Object status = resposta.metadata().get("status");
+
+            if (!"SUCCESS".equalsIgnoreCase(String.valueOf(status))) {
+                throw new IOException(
+                        "Falha ao consultar historico."
+                );
+            }
+
+            mensagens = resposta.content();
+        }
 
                     falhaMonitorRegistrada = false;
 
@@ -901,7 +1000,14 @@ public class FrmChat extends javax.swing.JFrame {
                                         EdtConversa.getEditorKit();
 
                                 try {
-
+                                    doc.setBase(
+                                            new URL(
+                                                    "http",
+                                                    Util.Servidor,
+                                                    Util.PortaWeb,
+                                                    "/"
+                                            )
+                                    );
                                     kit.insertHTML(
                                             doc,
                                             doc.getLength(),
@@ -924,7 +1030,7 @@ public class FrmChat extends javax.swing.JFrame {
                         }
                     });
 
-                    Thread.sleep(1000);
+                    Thread.sleep(2000);
 
                 } catch (InterruptedException e) {
 

@@ -16,6 +16,17 @@
         <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>pacote.FrmLogin</exec.mainClass>
     </properties>
+    
+    <dependencies>
+
+        <dependency>
+            <groupId>com.mycompany</groupId>
+            <artifactId>Chat_Protocolo</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+    </dependencies>
+
 
     <build>
         <plugins>

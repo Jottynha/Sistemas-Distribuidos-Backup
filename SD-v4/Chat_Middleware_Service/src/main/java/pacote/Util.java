@@ -1,8 +1,11 @@
 package pacote;
 
+import protocolo.ChatMessage;
+import protocolo.JsonProtocol;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
+import java.time.Instant;
+import java.util.Map;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -28,6 +31,7 @@ public class Util {
     // PORTAS
     public static final int PortaEnvioDesktop = 6661;
     public static final int PortaRecepcaoDesktop = 6662;
+    public static final int PortaRecepcaoJson = 6663;
     public static final int PortaWeb = 8081;
     public static final int PortaLogs = 8082;
     // DIRETORIOS: sempre relativos a pasta do modulo/JAR, nao ao terminal.
@@ -40,6 +44,7 @@ public class Util {
     // THREADS DESKTOP EXISTENTES
     public static DesktopRecepcaoThread desktopRecepcaoThread;
     public static DesktopEnvioThread desktopEnvioThread;
+    public static DesktopJsonRecepcaoThread desktopJsonRecepcaoThread;
     // HISTORICO COMPARTILHADO
     private static final List<String> historicoMensagens = new ArrayList<>();
     private static final ReentrantReadWriteLock travaHistorico =
@@ -322,21 +327,33 @@ public class Util {
 
         inicializarRepositorio();
 
-        if (desktopRecepcaoThread != null
-                || desktopEnvioThread != null) {
-            return;
+        if (desktopRecepcaoThread == null) {
+
+            desktopRecepcaoThread = new DesktopRecepcaoThread();
+
+            Thread.ofVirtual()
+                    .name("desktop-recepcao")
+                    .start(desktopRecepcaoThread);
         }
 
-        desktopRecepcaoThread = new DesktopRecepcaoThread();
-        desktopEnvioThread = new DesktopEnvioThread();
+        if (desktopEnvioThread == null) {
 
-        Thread.ofVirtual()
-                .name("desktop-recepcao")
-                .start(desktopRecepcaoThread);
+            desktopEnvioThread = new DesktopEnvioThread();
 
-        Thread.ofVirtual()
-                .name("desktop-envio")
-                .start(desktopEnvioThread);
+            Thread.ofVirtual()
+                    .name("desktop-envio")
+                    .start(desktopEnvioThread);
+        }
+
+        if (desktopJsonRecepcaoThread == null) {
+
+            desktopJsonRecepcaoThread =
+                    new DesktopJsonRecepcaoThread();
+
+            Thread.ofVirtual()
+                    .name("desktop-json-recepcao")
+                    .start(desktopJsonRecepcaoThread);
+        }
     }
 
     public static synchronized void pararDesktop() {
@@ -349,6 +366,11 @@ public class Util {
         if (desktopEnvioThread != null) {
             desktopEnvioThread.fecharServidor();
             desktopEnvioThread = null;
+        }
+
+        if (desktopJsonRecepcaoThread != null) {
+            desktopJsonRecepcaoThread.fecharServidor();
+            desktopJsonRecepcaoThread = null;
         }
     }
 
@@ -434,6 +456,7 @@ public class Util {
         }
     }
 
+    
     private static void atenderMensagensWeb(
             HttpExchange troca) throws IOException {
 
@@ -447,48 +470,247 @@ public class Util {
             return;
         }
 
+        // Mantem o GET antigo temporariamente para compatibilidade.
+        if ("GET".equalsIgnoreCase(metodo)) {
+
+            responder(
+                    troca,
+                    200,
+                    obterHistoricoHtml(),
+                    "text/html; charset=UTF-8"
+            );
+
+            return;
+        }
+
+        if (!"POST".equalsIgnoreCase(metodo)) {
+
+            responder(
+                    troca,
+                    405,
+                    "Metodo nao permitido",
+                    "text/plain; charset=UTF-8"
+            );
+
+            return;
+        }
+
+        String corpo = new String(
+                troca.getRequestBody().readAllBytes(),
+                StandardCharsets.UTF_8
+        );
+
+        ChatMessage requisicao;
+
+        // Primeiro, interpreta o JSON.
         try {
 
-            if ("GET".equalsIgnoreCase(metodo)) {
-
-                responder(
-                        troca,
-                        200,
-                        obterHistoricoHtml(),
-                        "text/html; charset=UTF-8"
-                );
-
-            } else if ("POST".equalsIgnoreCase(metodo)) {
-
-                String mensagem = new String(
-                        troca.getRequestBody().readAllBytes(),
-                        StandardCharsets.UTF_8
-                );
-
-                adicionarMensagem(mensagem);
-
-                responder(
-                        troca,
-                        200,
-                        "OK",
-                        "text/plain; charset=UTF-8"
-                );
-
-            } else {
-
-                responder(
-                        troca,
-                        405,
-                        "Metodo nao permitido",
-                        "text/plain; charset=UTF-8"
+            if (corpo.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Corpo da requisicao vazio."
                 );
             }
+
+            requisicao = JsonProtocol.deserializeLine(corpo);
+
+        } catch (Exception erro) {
+
+            responder(
+                    troca,
+                    400,
+                    JsonProtocol.serializeLine(
+                            criarErroWeb(
+                                    null,
+                                    "JSON_INVALIDO",
+                                    "Nao foi possivel interpretar o JSON."
+                            )
+                    ),
+                    "application/json; charset=UTF-8"
+            );
+
+            return;
+        }
+
+        try {
+
+            // ---------------------------------------------
+            // CONSULTA DO HISTORICO
+            // ---------------------------------------------
+            if (requisicao.type()
+                    == ChatMessage.Type.HISTORY_REQUEST) {
+
+                if (requisicao.sender().isBlank()) {
+
+                    responder(
+                            troca,
+                            400,
+                            JsonProtocol.serializeLine(
+                                    criarErroWeb(
+                                            requisicao.id(),
+                                            "REMETENTE_INVALIDO",
+                                            "O remetente deve ser informado."
+                                    )
+                            ),
+                            "application/json; charset=UTF-8"
+                    );
+
+                    return;
+                }
+
+                ChatMessage resposta = new ChatMessage(
+
+                        ChatMessage.CURRENT_VERSION,
+
+                        null,
+
+                        requisicao.id(),
+
+                        ChatMessage.Type.HISTORY_RESPONSE,
+
+                        "middleware",
+
+                        requisicao.sender(),
+
+                        obterHistoricoHtml(),
+
+                        "", "", "", "",
+
+                        Instant.now().toString(),
+
+                        Map.of(
+                                "status", "SUCCESS",
+                                "format", "text/html"
+                        )
+                );
+
+                responder(
+                        troca,
+                        200,
+                        JsonProtocol.serializeLine(resposta),
+                        "application/json; charset=UTF-8"
+                );
+
+                System.out.println(
+                        "Historico JSON HTTP enviado para "
+                        + requisicao.sender()
+                        + " | IP: " + ipRemoto(troca)
+                );
+
+                return;
+            }
+
+            // ---------------------------------------------
+            // ENVIO DE MENSAGEM
+            // ---------------------------------------------
+            if (requisicao.type()
+                    == ChatMessage.Type.SEND_MESSAGE) {
+
+                if (requisicao.sender().isBlank()
+                        || requisicao.sender().length() > 20) {
+
+                    responder(
+                            troca,
+                            400,
+                            JsonProtocol.serializeLine(
+                                    criarErroWeb(
+                                            requisicao.id(),
+                                            "REMETENTE_INVALIDO",
+                                            "Remetente invalido."
+                                    )
+                            ),
+                            "application/json; charset=UTF-8"
+                    );
+
+                    return;
+                }
+
+                if (requisicao.content().isBlank()
+                        && requisicao.sticker().isBlank()) {
+
+                    responder(
+                            troca,
+                            400,
+                            JsonProtocol.serializeLine(
+                                    criarErroWeb(
+                                            requisicao.id(),
+                                            "CONTEUDO_VAZIO",
+                                            "A mensagem nao pode estar vazia."
+                                    )
+                            ),
+                            "application/json; charset=UTF-8"
+                    );
+
+                    return;
+                }
+
+                String mensagemHtml =
+                        RenderizadorMensagemHtml.renderizar(requisicao);
+
+                // Persistencia temporaria no repositorio atual.
+                Util.adicionarMensagem(mensagemHtml);
+
+                ChatMessage confirmacao = new ChatMessage(
+
+                        ChatMessage.CURRENT_VERSION,
+
+                        null,
+
+                        requisicao.id(),
+
+                        ChatMessage.Type.ACK,
+
+                        "middleware",
+
+                        requisicao.sender(),
+
+                        "Mensagem recebida e registrada.",
+
+                        "", "", "", "",
+
+                        Instant.now().toString(),
+
+                        Map.of(
+                                "status", "SUCCESS"
+                        )
+                );
+
+                responder(
+                        troca,
+                        200,
+                        JsonProtocol.serializeLine(confirmacao),
+                        "application/json; charset=UTF-8"
+                );
+
+                System.out.println(
+                        "Mensagem JSON HTTP recebida de "
+                        + requisicao.sender()
+                        + " | IP: " + ipRemoto(troca)
+                );
+
+                return;
+            }
+
+            // ---------------------------------------------
+            // OPERACAO NAO SUPORTADA
+            // ---------------------------------------------
+            responder(
+                    troca,
+                    400,
+                    JsonProtocol.serializeLine(
+                            criarErroWeb(
+                                    requisicao.id(),
+                                    "OPERACAO_NAO_SUPORTADA",
+                                    "Operacao nao suportada pelo middleware."
+                            )
+                    ),
+                    "application/json; charset=UTF-8"
+            );
 
         } catch (Exception erro) {
 
             registrarErroServidor(
                     "web",
-                    "INTERNO/NÃO APLICÁVEL",
+                    "INTERNO/HTTP",
                     ipRemoto(troca),
                     "Util.atenderMensagensWeb",
                     erro
@@ -497,11 +719,49 @@ public class Util {
             responder(
                     troca,
                     500,
-                    "ERRO: nao foi possivel processar a requisicao",
-                    "text/plain; charset=UTF-8"
+                    JsonProtocol.serializeLine(
+                            criarErroWeb(
+                                    requisicao.id(),
+                                    "ERRO_INTERNO",
+                                    "Nao foi possivel processar a requisicao."
+                            )
+                    ),
+                    "application/json; charset=UTF-8"
             );
         }
     }
+
+    private static ChatMessage criarErroWeb(
+            String correlationId,
+            String codigo,
+            String descricao) {
+
+        return new ChatMessage(
+
+                ChatMessage.CURRENT_VERSION,
+
+                null,
+
+                correlationId,
+
+                ChatMessage.Type.ERROR,
+
+                "middleware",
+
+                "",
+
+                descricao,
+
+                "", "", "", "",
+
+                Instant.now().toString(),
+
+                Map.of(
+                        "code", codigo
+                )
+        );
+    }
+
 
     /**
      * Lista as figurinhas que estao na pasta central.

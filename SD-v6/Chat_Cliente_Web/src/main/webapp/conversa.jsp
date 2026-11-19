@@ -206,43 +206,92 @@
             }
         }
 
+        
+        function gerarIdMensagem() {
+            if (window.crypto && typeof window.crypto.randomUUID === "function") {
+                return window.crypto.randomUUID();
+            }
+
+            return "web-" + Date.now() + "-"
+                    + Math.random().toString(16).slice(2);
+        }
+
         async function enviarMensagem(evento) {
             evento.preventDefault();
+
             const texto = campoMensagem.value.trim();
-            if (!texto && !stickerSelecionada) return;
+
+            if (!texto && !stickerSelecionada) {
+                return;
+            }
 
             botaoEnviar.disabled = true;
             statusEnvio.textContent = "Enviando…";
-            try {
-                const avatarUrl = middleware + "/figurinhas/avatars/" + encodeURIComponent(avatar);
-                let mensagem = "<img src='" + avatarUrl + "' width='30' height='30' alt='Avatar'> ";
-                mensagem += "<font size='+1' color='" + cor + "'><b>" + escaparTexto(nickname) + "</b></font>: ";
-                mensagem += escaparTexto(texto);
-                if (stickerSelecionada) {
-                    mensagem += " <img src='" + urlFigurinha(stickerSelecionada) + "' width='72' height='72' alt='Figurinha'>";
-                }
-                mensagem += "<br>";
 
+            const requisicao = {
+                protocolVersion: 1,
+                id: gerarIdMensagem(),
+                correlationId: null,
+                type: "SEND_MESSAGE",
+                sender: nickname,
+                recipient: "Todos",
+                content: texto,
+                mode: "FALA",
+                color: cor,
+                avatar: avatar,
+                sticker: stickerSelecionada || "",
+                sentAt: new Date().toISOString(),
+                metadata: {
+                    clientType: "web"
+                }
+            };
+
+            try {
                 const resposta = await fetch(middleware + "/api/messages", {
                     method: "POST",
-                    headers: { "Content-Type": "text/plain;charset=UTF-8" },
-                    body: mensagem
+                    headers: {
+                        "Content-Type": "application/json; charset=UTF-8"
+                    },
+                    body: JSON.stringify(requisicao),
+                    cache: "no-store"
                 });
-                const confirmacao = (await resposta.text()).trim();
-                if (!resposta.ok || confirmacao !== "OK") {
-                    throw new Error(confirmacao || "HTTP " + resposta.status);
+
+                const confirmacao = await resposta.json();
+
+                const status = confirmacao.metadata
+                        ? confirmacao.metadata.status
+                        : null;
+
+                if (!resposta.ok
+                        || confirmacao.type !== "ACK"
+                        || confirmacao.correlationId !== requisicao.id
+                        || status !== "SUCCESS") {
+
+                    throw new Error(
+                        confirmacao.content
+                        || "O middleware nao confirmou o envio."
+                    );
                 }
+
                 campoMensagem.value = "";
                 limparFigurinha();
+
                 statusEnvio.textContent = "Mensagem enviada.";
+
             } catch (erro) {
-                statusEnvio.textContent = "Não foi possível enviar. Sua mensagem foi mantida.";
+
+                statusEnvio.textContent =
+                        "Não foi possível enviar. Sua mensagem foi mantida.";
+
                 reportarErro("conversa.jsp:enviarMensagem", erro);
+
             } finally {
+
                 botaoEnviar.disabled = false;
                 campoMensagem.focus();
             }
         }
+
 
         form.addEventListener("submit", enviarMensagem);
         campoMensagem.addEventListener("keydown", evento => {

@@ -19,3 +19,18 @@
 <img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='30' height='30' alt='Avatar'> <font size='+1' color='Navy'><b>jOAO</b></font>: Ai <img src='http://127.0.0.1:8081/figurinhas/fig1.gif' width='72' height='72' alt='Figurinha'><br>
 <img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='20' height='20'><font color='Blue'>Joao</font><b> Fala: </b>Opa<br>
 <img src='http://127.0.0.1:8081/figurinhas/avatars/indefinido.png' width='20' height='20'><font color='Blue'>Joao</font><b><i><u> Grita: </u></i></b><font color='Red' size='+1'>OPA</font><br>
+<div class="mensagem"><strong style="color:#3366CC">UsuarioTeste</strong>: Teste de comunicacao JSON</div>
+<div class="mensagem"><strong style="color:#333333">Joao</strong>: Opa</div>
+<div class="mensagem"><strong style="color:#333333">Pedro</strong>: Oi</div>
+<div class="mensagem"><strong style="color:#333333">Joao</strong>: 😀</div>
+<div class="mensagem"><strong style="color:#333333">João</strong>: Olpa</div>
+<div class="mensagem"><img src="/figurinhas/avatars/menino.png" width="30" height="30" alt="Avatar"> <strong style="color:#3366CC">UsuarioWebTeste</strong>: Minha primeira mensagem JSON pelo HTTP!</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/flash.png" width="30" height="30" alt="Avatar"> <strong style="color:Navy">Raul</strong>: Olá</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/flash.png" width="30" height="30" alt="Avatar"> <strong style="color:Navy">Raul</strong>: 👍</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/flash.png" width="30" height="30" alt="Avatar"> <strong style="color:Navy">Raul</strong>: oi <img src="/figurinhas/dinheiro.png" width="72" height="72" alt="Figurinha"></div><br>
+<div class="mensagem"><strong style="color:#333333">Pedro</strong>: Olá</div>
+<div class="mensagem"><strong style="color:#333333">Pedro</strong>: (sticker:beijo.png)</div>
+<div class="mensagem"><strong style="color:#333333">Teste</strong>: (sticker:coracao.png)</div>
+<div class="mensagem"><img src="/figurinhas/avatars/lanterna-verde.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:#333333">Jota</strong>: Olá</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/lanterna-verde.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:#333333">Jota</strong>:  <img src="/figurinhas/coracao.png" width="72" height="72" alt="Figurinha" style="vertical-align:middle;"></div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/batman.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:Navy">A</strong>: Oxi💯</div><br>

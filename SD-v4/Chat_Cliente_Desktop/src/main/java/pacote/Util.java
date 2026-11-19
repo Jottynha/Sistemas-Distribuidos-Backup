@@ -18,6 +18,7 @@ public class Util {
     // Portas TCP
     public static final int PortaEnvioDesktop = 6661;
     public static final int PortaRecepcaoDesktop = 6662;
+    public static final int PortaRecepcaoJson = 6663;
     // Portas HTTP
     public static final int PortaWeb = 8081;
     public static final int PortaLogs = 8082;
