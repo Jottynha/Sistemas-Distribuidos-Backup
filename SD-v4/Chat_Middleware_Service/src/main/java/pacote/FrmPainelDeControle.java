@@ -4,6 +4,7 @@ import java.io.IOException;
 
 public class FrmPainelDeControle extends javax.swing.JFrame {
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmPainelDeControle.class.getName());
+    private TerceirosJsonRecepcaoThread servidorTerceiros;
     public FrmPainelDeControle() {
 
         initComponents();
@@ -21,11 +22,29 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
         );
         
 
-        BtnAtivarTerceiros.setEnabled(false);
-        BtnAtivarTerceiros.setText("N/A");
+        BtnAtivarTerceiros.setEnabled(true);
+        BtnAtivarTerceiros.setSelected(false);
+        BtnAtivarTerceiros.setText("Ativar");
+
+        LBLSrvTerceiros.setText(
+                "Cliente Python via TLS - Porta 6665"
+        );
 
         BtnAtivarPublicidade.setEnabled(false);
         BtnAtivarPublicidade.setText("N/A");
+        
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent evt) {
+                if (servidorTerceiros != null) {
+                    servidorTerceiros.fecharServidor();
+                    servidorTerceiros = null;
+                }
+
+                // Encerra tambem os demais servicos do middleware.
+                Util.pararTodosServicos();
+            }
+        });
     }
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
@@ -332,11 +351,75 @@ public class FrmPainelDeControle extends javax.swing.JFrame {
     }//GEN-LAST:event_BtnAtivarWebActionPerformed
 
     private void BtnAtivarTerceirosActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnAtivarTerceirosActionPerformed
-        if(BtnAtivarTerceiros.isSelected()==true){
-            BtnAtivarTerceiros.setText("Desativar");
-            //...
+        if (BtnAtivarTerceiros.isSelected()) {
+            try {
+                if (servidorTerceiros == null || !servidorTerceiros.isRunning()) {
+                    servidorTerceiros = new TerceirosJsonRecepcaoThread();
+                    servidorTerceiros.iniciar();
+                }
+
+                BtnAtivarTerceiros.setText("Desativar");
+                LBLSrvTerceiros.setText(
+                        "Servidor TLS para Python ativo - Porta 6665"
+                );
+                LBLSrvTerceiros.setForeground(
+                        new java.awt.Color(0, 150, 0)
+                );
+
+            } catch (Exception e) {
+
+                BtnAtivarTerceiros.setSelected(false);
+                BtnAtivarTerceiros.setText("Ativar");
+
+                if (servidorTerceiros != null) {
+                    servidorTerceiros.fecharServidor();
+                    servidorTerceiros = null;
+                }
+
+                Util.registrarErroServidor(
+                        "desktop",
+                        "TERCEIROS",
+                        "NÃO APLICÁVEL",
+                        "FrmPainelDeControle.BtnAtivarTerceiros",
+                        e
+                );
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Nao foi possivel iniciar o servico para terceiros:\n"
+                        + e.getMessage(),
+                        "Erro",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+
         } else {
-            BtnAtivarTerceiros.setText("Ativar");
+
+            int resposta = JOptionPane.showConfirmDialog(
+                    this,
+                    "Deseja realmente parar o servico para terceiros?",
+                    "Confirmacao",
+                    JOptionPane.YES_NO_OPTION
+            );
+
+            if (resposta == JOptionPane.YES_OPTION) {
+
+                if (servidorTerceiros != null) {
+                    servidorTerceiros.fecharServidor();
+                    servidorTerceiros = null;
+                }
+
+                BtnAtivarTerceiros.setText("Ativar");
+                LBLSrvTerceiros.setText(
+                        "Cliente Python via TLS - Porta 6665"
+                );
+                LBLSrvTerceiros.setForeground(
+                        new java.awt.Color(255, 0, 0)
+                );
+
+            } else {
+                BtnAtivarTerceiros.setSelected(true);
+            }
         }
     }//GEN-LAST:event_BtnAtivarTerceirosActionPerformed
 

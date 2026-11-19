@@ -1,0 +1,14 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 6665
+  },
+  "tls": {
+    "ca_file": "../SD-v4/certificados/chat-root-ca.cer"
+  },
+  "web": {
+    "port": 8443
+  },
+  "timeout_seconds": 15,
+  "history_interval_seconds": 3
+}

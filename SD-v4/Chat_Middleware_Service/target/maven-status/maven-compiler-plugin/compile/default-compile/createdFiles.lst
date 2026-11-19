@@ -1,0 +1,14 @@
+pacote\MenuServidor.class
+pacote\FrmPainelDeControle$1.class
+pacote\MenuServidor$1.class
+pacote\Run.class
+pacote\DesktopEnvioThread.class
+pacote\DesktopJsonRecepcaoThread.class
+pacote\Chat_Middleware_Service.class
+pacote\DesktopRecepcaoThread.class
+pacote\ConfiguracaoTLS.class
+pacote\FrmPainelDeControle.class
+pacote\RenderizadorMensagemHtml.class
+pacote\TerceirosJsonRecepcaoThread.class
+pacote\Util$1.class
+pacote\Util.class

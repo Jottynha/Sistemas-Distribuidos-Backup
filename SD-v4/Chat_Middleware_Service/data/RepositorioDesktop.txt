@@ -44,3 +44,7 @@
 <div class="mensagem"><img src="/figurinhas/avatars/lanterna-verde.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:#333333">joao</strong>:  <img src="/figurinhas/coracao.png" width="72" height="72" alt="Figurinha" style="vertical-align:middle;"></div><br>
 <div class="mensagem"><img src="/figurinhas/avatars/batman.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:Navy">Maria</strong>: 😘 <img src="/figurinhas/coracao.png" width="72" height="72" alt="Figurinha" style="vertical-align:middle;"></div><br>
 <div class="mensagem"><img src="/figurinhas/avatars/flash.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:MediumSeaGreen">Joao</strong>:  <img src="/figurinhas/dinheiro.png" width="72" height="72" alt="Figurinha" style="vertical-align:middle;"></div><br>
+<div class="mensagem"><strong style="color:#333333">Python</strong>: Oi</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/batman.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:Navy">A</strong>: Oi</div><br>
+<div class="mensagem"><img src="/figurinhas/avatars/lanterna-verde.png" width="30" height="30" alt="Avatar" style="vertical-align:middle;"> <strong style="color:#333333">Jao</strong>: 😀</div><br>
+<div class="mensagem"><strong style="color:#333333">Python</strong>: Olá</div><br>

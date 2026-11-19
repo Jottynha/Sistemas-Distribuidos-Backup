@@ -8,3 +8,93 @@
 
 2026-11-19 16:43:48 | desktop | INTERNO/NÃO APLICÁVEL | NÃO APLICÁVEL | DesktopJsonRecepcaoThread.run | IOException: Arquivo tls.properties nao encontrado: C:\Users\joao.silva\Documents\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\data\tls.properties
 
+2026-11-19 17:45:01 | desktop | desktop | 127.0.0.1 | DesktopJsonRecepcaoThread.atenderCliente | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:45:05 | desktop | desktop | 127.0.0.1 | DesktopJsonRecepcaoThread.atenderCliente | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:45:09 | desktop | desktop | 127.0.0.1 | DesktopJsonRecepcaoThread.atenderCliente | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:45:13 | desktop | desktop | 127.0.0.1 | DesktopJsonRecepcaoThread.atenderCliente | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:45:17 | desktop | desktop | 127.0.0.1 | DesktopJsonRecepcaoThread.atenderCliente | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:38 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:41 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:42 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:44 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:44 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:47 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:50 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:53 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:56:56 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:06 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:08 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:11 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:14 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:17 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:20 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:23 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:44 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:47 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:47 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:50 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:53 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 17:57:56 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:04:14 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:04:17 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:04:23 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:06:40 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:06:46 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:19:52 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:19:55 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:19:56 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:19:58 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:20:03 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:20:28 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:00 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:03 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:03 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:06 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:09 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:09 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
+2026-11-19 18:38:15 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
+
