@@ -1,4 +1,3 @@
-
 package pacote;
 
 import protocolo.ChatMessage;
@@ -1001,7 +1000,7 @@ public class Util {
             return;
         }
 
-        listarImagensDoDiretorio(
+        listarFigurinhasJson(
                 troca,
                 DiretorioFigurinhas
         );
@@ -1027,12 +1026,119 @@ public class Util {
 
         Files.createDirectories(pastaAvatares);
 
+        // Mantem o formato texto utilizado pelo cliente Web existente.
         listarImagensDoDiretorio(
                 troca,
                 pastaAvatares
         );
     }
 
+    /**
+     * Retorna o catalogo de figurinhas como um array JSON de nomes.
+     * Exemplo: ["figurinha1.png", "figurinha2.gif"]
+     */
+    private static void listarFigurinhasJson(
+            HttpExchange troca,
+            Path diretorio) throws IOException {
+
+        try (var arquivos = Files.list(diretorio)) {
+
+            List<String> nomes = arquivos
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(Util::ehArquivoImagem)
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .toList();
+
+            String resultado = serializarListaJson(nomes);
+
+            responder(
+                    troca,
+                    200,
+                    resultado,
+                    "application/json; charset=UTF-8"
+            );
+
+        } catch (IOException erro) {
+
+            registrarErroServidor(
+                    "web",
+                    "INTERNO/HTTPS",
+                    ipRemoto(troca),
+                    "Util.listarFigurinhasJson",
+                    erro
+            );
+
+            responder(
+                    troca,
+                    500,
+                    "{\"error\":\"Erro ao listar figurinhas\"}",
+                    "application/json; charset=UTF-8"
+            );
+        }
+    }
+
+    /**
+     * Serializa uma lista de nomes como array JSON sem depender
+     * de uma biblioteca externa para uma estrutura tao simples.
+     */
+    private static String serializarListaJson(List<String> valores) {
+
+        StringBuilder json = new StringBuilder("[");
+
+        for (int i = 0; i < valores.size(); i++) {
+
+            if (i > 0) {
+                json.append(',');
+            }
+
+            json.append('"')
+                    .append(escaparStringJson(valores.get(i)))
+                    .append('"');
+        }
+
+        return json.append(']').toString();
+    }
+
+    /**
+     * Escapa os caracteres especiais exigidos pelo formato JSON.
+     */
+    private static String escaparStringJson(String valor) {
+
+        StringBuilder resultado = new StringBuilder();
+
+        for (int i = 0; i < valor.length(); i++) {
+
+            char caractere = valor.charAt(i);
+
+            switch (caractere) {
+                case '"' -> resultado.append("\\\"");
+                case '\\' -> resultado.append("\\\\");
+                case '\b' -> resultado.append("\\b");
+                case '\f' -> resultado.append("\\f");
+                case '\n' -> resultado.append("\\n");
+                case '\r' -> resultado.append("\\r");
+                case '\t' -> resultado.append("\\t");
+                default -> {
+                    if (caractere < 0x20) {
+                        resultado.append("\\u");
+                        String hexadecimal = Integer.toHexString(caractere);
+                        resultado.append("0".repeat(4 - hexadecimal.length()));
+                        resultado.append(hexadecimal);
+                    } else {
+                        resultado.append(caractere);
+                    }
+                }
+            }
+        }
+
+        return resultado.toString();
+    }
+
+    /**
+     * Mantem a listagem textual para os endpoints que ainda utilizam
+     * uma linha por arquivo, como /api/avatars.
+     */
     private static void listarImagensDoDiretorio(
             HttpExchange troca,
             Path diretorio) throws IOException {

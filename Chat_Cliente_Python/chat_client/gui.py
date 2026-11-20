@@ -295,44 +295,118 @@ class ChatWindow:
         self.root.after(config.history_interval * 1000, self._schedule_refresh)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
+    
     def _build_interface(self) -> None:
         style = ttk.Style(self.root)
         style.configure("Title.TLabel", font=("Segoe UI", 17, "bold"))
         style.configure("Subtle.TLabel", foreground="#5b6472")
-        style.configure("Send.TButton", font=("Segoe UI", 10, "bold"), padding=(16, 8))
+        style.configure(
+            "Send.TButton",
+            font=("Segoe UI", 10, "bold"),
+            padding=(16, 8),
+        )
 
-        outer = ttk.Frame(self.root, padding=16)
+        outer = ttk.Frame(self.root, padding=12)
         outer.pack(fill=tk.BOTH, expand=True)
 
+        # A linha do histórico recebe todo o espaço variável.
+        # A área de composição permanece reservada na parte inferior.
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(2, weight=1)
+
+        # Cabeçalho
         header = ttk.Frame(outer)
-        header.pack(fill=tk.X, pady=(0, 12))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+
         title_area = ttk.Frame(header)
         title_area.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(title_area, text="Chat", style="Title.TLabel").pack(anchor=tk.W)
+
         ttk.Label(
             title_area,
-            text=f"Cliente Python  •  Middleware TLS {self.config.host}:{self.config.port}",
+            text="Chat",
+            style="Title.TLabel",
+        ).pack(anchor=tk.W)
+
+        ttk.Label(
+            title_area,
+            text=(
+                f"Cliente Python  •  Middleware TLS "
+                f"{self.config.host}:{self.config.port}"
+            ),
             style="Subtle.TLabel",
         ).pack(anchor=tk.W, pady=(2, 0))
-        ttk.Button(header, text="Atualizar histórico", command=self._refresh_history).pack(side=tk.RIGHT)
 
-        identity = ttk.LabelFrame(outer, text="Identificação", padding=(10, 8))
-        identity.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(identity, text="Seu nome").grid(row=0, column=0, sticky=tk.W)
-        self.sender_var = tk.StringVar(value="Python")
-        ttk.Entry(identity, textvariable=self.sender_var, width=22).grid(
-            row=1, column=0, sticky=tk.EW, padx=(0, 14), pady=(3, 0)
+        ttk.Button(
+            header,
+            text="Atualizar histórico",
+            command=self._refresh_history,
+        ).pack(side=tk.RIGHT)
+
+        # Identificação
+        identity = ttk.LabelFrame(
+            outer,
+            text="Identificação",
+            padding=(10, 8),
         )
-        ttk.Label(identity, text="Destinatário (opcional)").grid(row=0, column=1, sticky=tk.W)
-        self.recipient_var = tk.StringVar(value="")
-        ttk.Entry(identity, textvariable=self.recipient_var, width=24).grid(
-            row=1, column=1, sticky=tk.EW, padx=(0, 14), pady=(3, 0)
-        )
+        identity.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+
         identity.columnconfigure(0, weight=1)
         identity.columnconfigure(1, weight=1)
 
-        history_frame = ttk.LabelFrame(outer, text="Mensagens", padding=8)
-        history_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        ttk.Label(
+            identity,
+            text="Seu nome",
+        ).grid(row=0, column=0, sticky=tk.W)
+
+        self.sender_var = tk.StringVar(value="Python")
+
+        ttk.Entry(
+            identity,
+            textvariable=self.sender_var,
+            width=22,
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=(0, 14),
+            pady=(3, 0),
+        )
+
+        ttk.Label(
+            identity,
+            text="Destinatário (opcional)",
+        ).grid(row=0, column=1, sticky=tk.W)
+
+        self.recipient_var = tk.StringVar(value="")
+
+        ttk.Entry(
+            identity,
+            textvariable=self.recipient_var,
+            width=24,
+        ).grid(
+            row=1,
+            column=1,
+            sticky="ew",
+            padx=(0, 4),
+            pady=(3, 0),
+        )
+
+        # Histórico: ocupa somente a área flexível.
+        history_frame = ttk.LabelFrame(
+            outer,
+            text="Mensagens",
+            padding=8,
+        )
+        history_frame.grid(
+            row=2,
+            column=0,
+            sticky="nsew",
+            pady=(0, 8),
+        )
+
+        history_frame.rowconfigure(0, weight=1)
+        history_frame.columnconfigure(0, weight=1)
+
         self.history = ScrolledText(
             history_frame,
             wrap=tk.WORD,
@@ -348,12 +422,24 @@ class ChatWindow:
             spacing3=3,
         )
         self.history.pack(fill=tk.BOTH, expand=True)
-        self.history.tag_configure("image_error", foreground="#8a8f98", font=("Segoe UI", 9, "italic"))
 
-        composer = ttk.LabelFrame(outer, text="Nova mensagem", padding=8)
-        composer.pack(fill=tk.X)
+        self.history.tag_configure(
+            "image_error",
+            foreground="#8a8f98",
+            font=("Segoe UI", 9, "italic"),
+        )
+
+        # Área de composição: fica sempre abaixo do histórico.
+        composer = ttk.LabelFrame(
+            outer,
+            text="Nova mensagem",
+            padding=8,
+        )
+        composer.grid(row=3, column=0, sticky="ew")
+
         composer_row = ttk.Frame(composer)
         composer_row.pack(fill=tk.X)
+
         self.message_entry = ScrolledText(
             composer_row,
             height=3,
@@ -364,8 +450,18 @@ class ChatWindow:
             padx=8,
             pady=6,
         )
-        self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self.message_entry.bind("<Control-Return>", self._send_with_shortcut)
+        self.message_entry.pack(
+            side=tk.LEFT,
+            fill=tk.X,
+            expand=True,
+            padx=(0, 10),
+        )
+
+        self.message_entry.bind(
+            "<Control-Return>",
+            self._send_with_shortcut,
+        )
+
         self.send_button = ttk.Button(
             composer_row,
             text="Enviar",
@@ -374,14 +470,21 @@ class ChatWindow:
         )
         self.send_button.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Botões de emojis e figurinhas.
         media_row = ttk.Frame(composer)
-        media_row.pack(fill=tk.X, pady=(8, 0))
+        media_row.pack(fill=tk.X, pady=(7, 0))
+
         self.emoji_button = ttk.Button(
-            media_row, text="Emoji", command=self._show_emoji_picker
+            media_row,
+            text="Emoji",
+            command=self._show_emoji_picker,
         )
         self.emoji_button.pack(side=tk.LEFT, padx=(0, 6))
+
         self.sticker_button = ttk.Button(
-            media_row, text="Figurinhas", command=self._load_stickers
+            media_row,
+            text="Figurinhas",
+            command=self._load_stickers,
         )
         self.sticker_button.pack(side=tk.LEFT)
 
@@ -391,10 +494,22 @@ class ChatWindow:
             style="Subtle.TLabel",
         ).pack(anchor=tk.W, pady=(5, 0))
 
-        self.status_var = tk.StringVar(value="Aguardando conexão com o middleware...")
-        ttk.Label(outer, textvariable=self.status_var, style="Subtle.TLabel").pack(
-            anchor=tk.W, pady=(10, 0)
+        # Status
+        self.status_var = tk.StringVar(
+            value="Aguardando conexão com o middleware..."
         )
+
+        ttk.Label(
+            outer,
+            textvariable=self.status_var,
+            style="Subtle.TLabel",
+        ).grid(
+            row=4,
+            column=0,
+            sticky=tk.W,
+            pady=(8, 0),
+        )
+
 
     def _show_emoji_picker(self) -> None:
         """Abre uma paleta simples; o emoji e inserido como texto Unicode."""
