@@ -1,5 +1,6 @@
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
 <%@page import="java.net.URLEncoder"%>
+<%@ include file="/WEB-INF/jspf/middleware-config.jspf" %>
 <%! 
     private String escaparHtml(String valor) {
         if (valor == null) return "";
@@ -30,8 +31,6 @@
     session.setAttribute("Cor", cor);
     session.setAttribute("Avatar", avatar);
 
-    String coletor = application.getInitParameter("log.collector.publicUrl");
-    if (coletor == null || coletor.isBlank()) coletor = "https://127.0.0.1:8443/api/logs";
 %>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -77,17 +76,19 @@
         }
     </style>
 </head>
-<body data-log-collector="<%= escaparHtml(coletor) %>">
+<body>
+    <div id="middlewareConfig" hidden data-primary="<%= middlewarePrimarySafe %>" data-backup="<%= middlewareBackupSafe %>" data-failover-wait="<%= failoverWaitMs %>"></div>
     <main class="chat-layout">
         <iframe id="frameTopo" title="Identificação do usuário" src="topo.jsp"></iframe>
         <iframe id="frameMensagens" title="Histórico da conversa" src="mensagem.jsp"></iframe>
         <iframe id="frameConversa" title="Enviar mensagem" src="conversa.jsp"></iframe>
     </main>
+    <script src="<%= request.getContextPath() %>/js/middleware-client.js"></script>
     <script>
-        const coletor = document.body.dataset.logCollector;
+        const middlewareClient = window.createMiddlewareClient(document.getElementById("middlewareConfig"));
         function reportarErroWeb(classeMetodo, mensagem) {
             const registro = ["web", navigator.userAgent || "Navegador Web", classeMetodo, String(mensagem)].join("\t");
-            fetch(coletor, {
+            middlewareClient.fetch("/api/logs", {
                 method: "POST", mode: "cors", keepalive: true,
                 headers: { "Content-Type": "text/plain;charset=UTF-8" },
                 body: registro

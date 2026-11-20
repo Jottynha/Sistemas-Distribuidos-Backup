@@ -1,11 +1,16 @@
 package pacote.database;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import protocolo.ChatMessage;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,6 +20,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,11 +63,35 @@ public final class MensagemDAO {
              ORDER BY sent_at ASC, created_at ASC, message_id ASC
             """;
 
+    private static final String SQL_LISTAR_REPLICACAO = """
+            SELECT message_id, message_type, sender, recipient, content,
+                   mode, color, avatar, sticker,
+                   DATE_FORMAT(sent_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS sent_at_utc,
+                   metadata, rendered_html
+              FROM mensagens
+             ORDER BY sent_at ASC, created_at ASC, message_id ASC
+             LIMIT ? OFFSET ?
+            """;
+
+    /* A ordenacao por ID torna o resumo independente da ordem de insercao. */
+    private static final String SQL_RESUMO = """
+            SELECT message_id, message_type, sender, recipient, content,
+                   mode, color, avatar, sticker,
+                   DATE_FORMAT(sent_at, '%Y-%m-%d %H:%i:%s.%f') AS sent_at_utc,
+                   CAST(metadata AS CHAR) AS metadata_json,
+                   rendered_html
+              FROM mensagens
+             ORDER BY message_id ASC
+            """;
+
     private static final String SQL_CONTAR =
             "SELECT COUNT(*) FROM mensagens";
 
+    /** Resumo usado para verificar se os dois bancos terminaram identicos. */
+    public record ResumoMensagens(long quantidade, String sha256) { }
+
     /**
-     * Persiste uma mensagem ja validada e renderizada pelo middleware.
+     * Persiste uma mensagem ja validada e renderizada no MySQL.
      * O HTML e armazenado para preservar o formato consumido pelos clientes atuais.
      */
     public void salvar(ChatMessage mensagem, String renderedHtml)
@@ -112,7 +142,6 @@ public final class MensagemDAO {
             comando.executeUpdate();
         }
     }
-
 
     /**
      * Persiste a mensagem se o identificador ainda nao existir.
@@ -235,10 +264,7 @@ public final class MensagemDAO {
         }
     }
 
-    /**
-     * Recupera o HTML das mensagens na ordem cronologica.
-     * O resultado pode ser unido e enviado no HISTORY_RESPONSE existente.
-     */
+    /** Recupera o HTML das mensagens na ordem cronologica. */
     public List<String> buscarHistoricoHtml() throws SQLException {
         List<String> mensagens = new ArrayList<>();
 
@@ -252,6 +278,99 @@ public final class MensagemDAO {
         }
 
         return List.copyOf(mensagens);
+    }
+
+    /**
+     * Retorna uma pagina de registros completos para sincronizacao entre bancos.
+     * O chamador deve manter os escritores suspensos durante uma sincronizacao.
+     */
+    public List<MensagemArmazenada> listarMensagensParaReplicacao(int offset, int limite)
+            throws SQLException {
+        if (offset < 0 || limite < 1 || limite > 100) {
+            throw new IllegalArgumentException("Paginacao de replicacao invalida.");
+        }
+
+        List<MensagemArmazenada> mensagens = new ArrayList<>();
+        try (Connection conexao = DatabaseConnection.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(SQL_LISTAR_REPLICACAO)) {
+            comando.setInt(1, limite);
+            comando.setInt(2, offset);
+
+            try (ResultSet resultado = comando.executeQuery()) {
+                while (resultado.next()) {
+                    String metadataTexto = resultado.getString("metadata");
+                    JsonNode metadataNode = JSON.readTree(
+                            metadataTexto == null || metadataTexto.isBlank() ? "{}" : metadataTexto
+                    );
+                    Map<String, Object> metadata = JSON.convertValue(
+                            metadataNode,
+                            new TypeReference<Map<String, Object>>() { }
+                    );
+
+                    ChatMessage mensagem = new ChatMessage(
+                            ChatMessage.CURRENT_VERSION,
+                            resultado.getString("message_id"),
+                            null,
+                            ChatMessage.Type.valueOf(resultado.getString("message_type")),
+                            resultado.getString("sender"),
+                            resultado.getString("recipient"),
+                            resultado.getString("content"),
+                            resultado.getString("mode"),
+                            resultado.getString("color"),
+                            resultado.getString("avatar"),
+                            resultado.getString("sticker"),
+                            resultado.getString("sent_at_utc"),
+                            metadata
+                    );
+                    mensagens.add(new MensagemArmazenada(
+                            mensagem,
+                            resultado.getString("rendered_html")
+                    ));
+                }
+            }
+        } catch (JsonProcessingException | IllegalArgumentException erro) {
+            throw new SQLException("Nao foi possivel reconstruir os registros para replicacao.", erro);
+        }
+
+        return List.copyOf(mensagens);
+    }
+
+    /**
+     * Calcula quantidade e SHA-256 dos campos persistidos de todas as mensagens.
+     * O resumo permite confirmar que os bancos contem exatamente os mesmos registros.
+     */
+    public ResumoMensagens calcularResumoMensagens() throws SQLException {
+        final MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException erro) {
+            throw new SQLException("SHA-256 nao esta disponivel nesta JVM.", erro);
+        }
+
+        long quantidade = 0;
+        try (Connection conexao = DatabaseConnection.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(SQL_RESUMO);
+             ResultSet resultado = comando.executeQuery()) {
+
+            while (resultado.next()) {
+                quantidade++;
+                for (int coluna = 1; coluna <= 12; coluna++) {
+                    atualizarDigest(digest, resultado.getString(coluna));
+                }
+            }
+        }
+
+        return new ResumoMensagens(quantidade, HexFormat.of().formatHex(digest.digest()));
+    }
+
+    private static void atualizarDigest(MessageDigest digest, String valor) {
+        if (valor == null) {
+            digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(-1).array());
+            return;
+        }
+        byte[] bytes = valor.getBytes(StandardCharsets.UTF_8);
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+        digest.update(bytes);
     }
 
     public long contarMensagens() throws SQLException {

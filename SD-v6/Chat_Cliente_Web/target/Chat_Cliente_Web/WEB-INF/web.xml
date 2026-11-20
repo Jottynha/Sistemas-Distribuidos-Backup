@@ -17,6 +17,11 @@
         <param-value>https://127.0.0.1:8443</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>middleware.backupPublicBaseUrl</param-name>
+        <param-value>https://127.0.0.1:8443</param-value>
+    </context-param>
+
     <!-- Coletor de logs integrado ao servidor HTTPS. -->
     <context-param>
         <param-name>log.collector.url</param-name>

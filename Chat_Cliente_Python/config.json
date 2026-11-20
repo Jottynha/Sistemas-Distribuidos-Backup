@@ -1,7 +1,8 @@
 {
   "server": {
     "host": "127.0.0.1",
-    "port": 6665
+    "port": 6665,
+    "backup_hosts": []
   },
   "tls": {
     "ca_file": "../SD-v4/certificados/chat-root-ca.cer"
@@ -10,5 +11,9 @@
     "port": 8443
   },
   "timeout_seconds": 15,
-  "history_interval_seconds": 3
+  "history_interval_seconds": 3,
+  "advertising": {
+    "multicast_group": "239.255.42.99",
+    "multicast_port": 5005
+  }
 }

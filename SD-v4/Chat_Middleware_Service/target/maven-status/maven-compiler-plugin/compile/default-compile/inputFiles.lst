@@ -1,7 +1,9 @@
+C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\advertising\PublicidadeMulticastService.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\Chat_Middleware_Service.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\ConfiguracaoTLS.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\database\DatabaseConfig.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\database\DatabaseConnection.java
+C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\database\MensagemArmazenada.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\database\MensagemDAO.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\database\TestarConexaoMySQL.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\DesktopEnvioThread.java
@@ -12,6 +14,7 @@ C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Cha
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\RenderizadorMensagemHtml.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\replication\ReplicacaoClient.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\replication\ReplicacaoConfig.java
+C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\replication\ReplicacaoHeartbeatMonitor.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\replication\ReplicacaoRecepcaoThread.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\replication\ReplicationEnvelope.java
 C:\Users\berna\OneDrive\Documentos\GitHub\Sistemas-Distribuidos-Backup\SD-v4\Chat_Middleware_Service\src\main\java\pacote\Run.java

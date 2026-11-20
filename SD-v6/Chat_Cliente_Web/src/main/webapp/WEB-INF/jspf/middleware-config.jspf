@@ -1,0 +1,56 @@
+<%!
+    private String chatEscapeAttribute(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("\"", "&quot;")
+                .replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;");
+    }
+
+    private String chatBaseHttps(String hostOrUrl, String port) {
+        if (hostOrUrl == null || hostOrUrl.isBlank()) return "https://127.0.0.1:" + port;
+        String value = hostOrUrl.trim().replaceAll("/+$", "");
+        if (value.startsWith("https://")) return value;
+        if (value.startsWith("http://")) {
+            value = value.substring("http://".length());
+            int slash = value.indexOf('/');
+            if (slash >= 0) value = value.substring(0, slash);
+        }
+        if (value.startsWith("[")) return "https://" + value + (value.contains("]:") ? "" : ":" + port);
+        if (value.indexOf(':') >= 0 && value.indexOf(':') == value.lastIndexOf(':')) return "https://" + value;
+        if (value.indexOf(':') >= 0) return "https://[" + value + "]:" + port;
+        return "https://" + value + ":" + port;
+    }
+%>
+<%
+    String middlewarePortEnv = System.getenv("CHAT_SERVER_WEB_PORT");
+    String middlewarePort = (middlewarePortEnv == null || middlewarePortEnv.isBlank()) ? "8443" : middlewarePortEnv.trim();
+
+    String middlewarePrimaryEnv = System.getenv("CHAT_SERVER_HOST");
+    String middlewarePrimaryConfigured = application.getInitParameter("middleware.publicBaseUrl");
+    if (middlewarePrimaryEnv != null && !middlewarePrimaryEnv.isBlank()) {
+        middlewarePrimaryConfigured = middlewarePrimaryEnv;
+    }
+    if (middlewarePrimaryConfigured == null || middlewarePrimaryConfigured.isBlank()) {
+        middlewarePrimaryConfigured = "127.0.0.1";
+    }
+    String middlewarePrimaryBase = chatBaseHttps(middlewarePrimaryConfigured, middlewarePort).replaceAll("/+$", "");
+
+    String middlewareBackupEnv = System.getenv("CHAT_SERVER_BACKUP_HOST");
+    String middlewareBackupConfigured = application.getInitParameter("middleware.backupPublicBaseUrl");
+    if (middlewareBackupEnv != null && !middlewareBackupEnv.isBlank()) {
+        middlewareBackupConfigured = middlewareBackupEnv;
+    }
+    if (middlewareBackupConfigured == null || middlewareBackupConfigured.isBlank()) {
+        middlewareBackupConfigured = middlewarePrimaryConfigured;
+    }
+    String middlewareBackupBase = chatBaseHttps(middlewareBackupConfigured, middlewarePort).replaceAll("/+$", "");
+    String middlewarePrimarySafe = chatEscapeAttribute(middlewarePrimaryBase);
+    String middlewareBackupSafe = chatEscapeAttribute(middlewareBackupBase);
+%>
+
+<%
+    String middlewareFailoverWait = System.getenv("CHAT_FAILOVER_CLIENT_WAIT_SECONDS");
+    if (middlewareFailoverWait == null || middlewareFailoverWait.isBlank()) middlewareFailoverWait = "25";
+    int failoverWaitMs;
+    try { failoverWaitMs = Math.max(5000, Math.min(60000, Integer.parseInt(middlewareFailoverWait.trim()) * 1000)); }
+    catch (NumberFormatException erro) { failoverWaitMs = 25000; }
+%>

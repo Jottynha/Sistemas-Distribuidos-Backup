@@ -21,7 +21,7 @@
 
 Projeto acadêmico da disciplina **Sistemas Distribuídos**, do curso de Engenharia de Computação. A plataforma utiliza um middleware Java como núcleo da comunicação entre clientes Desktop, Web e Python. As mensagens são trocadas por um protocolo JSON comum e persistidas em um banco MySQL acessado pelo middleware.
 
-> **Estado desta documentação:** atualização de 20/11/2026. A persistência MySQL local e a comunicação dos três tipos de cliente foram integradas e testadas. O schema do Banco B, o receptor interno TLS e a primeira implementação de replicação síncrona A→B foram preparados no código; a validação ponta a ponta ainda está pendente. O failover/reconexão automática, a conexão do banco entre hosts independentes e a publicidade multicast ainda não foram concluídos.
+> **Estado desta documentação:** atualização de 20/11/2026. A persistência MySQL, a comunicação Desktop/Web/Python e a replicação síncrona A→B foram testadas localmente pelo grupo. O código também inclui promoção automática do reserva, reconexão dos clientes e publicidade multicast com gateway WebSocket para o navegador. Ainda precisam ser demonstrados: queda real do Middleware A com os clientes já abertos, rede multicast entre hosts, execução em máquinas/instâncias independentes e banco remoto em outro host.
 
 ## Sumário
 
@@ -38,8 +38,9 @@ Projeto acadêmico da disciplina **Sistemas Distribuídos**, do curso de Engenha
 - [11. Execução e implantação](#11-execução-e-implantação)
 - [12. Configuração de rede](#12-configuração-de-rede)
 - [13. Testes já realizados e testes pendentes](#13-testes-já-realizados-e-testes-pendentes)
-- [14. Próxima etapa: Banco B e tolerância a falhas](#14-próxima-etapa-banco-b-e-tolerância-a-falhas)
-- [15. Segurança e arquivos que não devem ser versionados](#15-segurança-e-arquivos-que-não-devem-ser-versionados)
+- [14. Banco B, replicação e tolerância a falhas](#14-banco-b-replicação-e-tolerância-a-falhas)
+- [15. Failover e publicidade multicast](#15-failover-e-publicidade-multicast)
+- [16. Segurança e arquivos que não devem ser versionados](#16-segurança-e-arquivos-que-não-devem-ser-versionados)
 
 ## 1. Visão geral
 
@@ -70,18 +71,18 @@ A tabela diferencia o que já foi implementado do que ainda precisa de validaç�
 
 | Requisito do enunciado | Pontos | Situação atual |
 |---|---:|---|
-| Banco de dados remoto e modelo de persistência | 4,0 | **Persistência MySQL implementada e testada localmente.** Falta comprovar conexão de outro host e documentar a implantação remota. |
-| Protocolo JSON | 3,0 | **Implementado** nos fluxos atuais dos clientes e middleware. |
-| Criptografia das comunicações | 3,0 | **TLS/HTTPS implementado** nos canais atuais. Falta demonstrar a infraestrutura distribuída completa. |
-| Novo cliente gráfico em outra linguagem | 5,0 | **Cliente Python implementado**, com texto, emojis, figurinhas e histórico. |
-| Publicidade sincronizada por multicast | 4,0 | **Pendente de implementação/validação.** |
-| Replicação, segundo banco e failover automático | 6,0 | **Banco B e primeira fase de replicação síncrona A→B implementados no código; teste ponta a ponta pendente.** Promoção automática, failover e reconexão dos clientes ainda pendentes. |
+| Banco de dados remoto e modelo de persistência | 4,0 | **MySQL/JDBC e schema A/B implementados; persistência e recuperação local testadas.** Falta demonstrar conexão JDBC de um middleware em outro host para o MySQL remoto. |
+| Protocolo JSON | 3,0 | **Implementado** nos fluxos Desktop, Web, Python e replicação interna. |
+| Criptografia das comunicações | 3,0 | **TLS/HTTPS implementado** nos canais de clientes e na replicação A→B. A demonstração em hosts distintos ainda depende dos certificados/SAN e da rede. |
+| Novo cliente gráfico em outra linguagem | 5,0 | **Cliente Python implementado e testado**, com texto, emojis, figurinhas, histórico e failover configurável. |
+| Publicidade sincronizada por multicast | 4,0 | **Implementada no código:** emissor UDP multicast, receptores Desktop/Python e gateway WebSocket para Web. Falta comprovar a recepção simultânea em vários hosts/rede de hotspot. |
+| Replicação, segundo banco e failover automático | 6,0 | **Replicação síncrona A→B validada localmente pelos três clientes e persistente após reiniciar os processos.** Promoção automática e reconexão foram implementadas; falta o teste de queda de A com clientes já abertos e a validação com B/DB em host independente. |
 
 Também é obrigatório preparar e demonstrar pelo menos duas instâncias de cada modalidade (duas Web, duas Desktop e duas Python), envolvendo vários hosts na rede. Essa demonstração ainda precisa ser organizada e comprovada.
 
 ## 3. Arquitetura atual
 
-O middleware centraliza a comunicação e a persistência. A operação de clientes continua centralizada no Middleware A. O Middleware B possui agora um modo inicial `--replica-only`, que recebe as mensagens replicadas por TLS na porta interna 6666 e grava no Banco B. A promoção do reserva para atendimento de clientes ainda será implementada.
+O middleware centraliza a comunicação e a persistência. Enquanto A está ativo, ele atende clientes, grava no Banco A e replica cada mensagem por TLS para o B antes de responder ACK. O B inicia em `--replica-only`, recebe heartbeats e mensagens pela porta 6666 e grava no Banco B. Se o heartbeat expirar, o B promove-se para ACTIVE e inicia os serviços de clientes; o A detecta o estado ACTIVE ou a perda de lease e interrompe seus listeners para evitar split-brain. Os clientes mantêm os endereços de A e B e repetem solicitações durante a janela de promoção.
 
 ```mermaid
 flowchart TB
@@ -90,7 +91,7 @@ flowchart TB
     P[Cliente Python Tkinter]
     M[Middleware Java 21]
     DB[(MySQL A<br/>chat_distribuido)]
-    MB[Middleware B<br/>modo replica-only]
+    MB[Middleware B<br/>STANDBY / ACTIVE]
     DBB[(MySQL B<br/>chat_distribuido_b)]
     F[Diretório de figurinhas e avatares]
     L[Coletor de logs HTTPS]
@@ -99,8 +100,11 @@ flowchart TB
     P <-->|JSON sobre TLS :6665| M
     W <-->|JSON sobre HTTPS :8443| M
     M <-->|JDBC| DB
-    M -->|TLS :6666| MB
+    M -->|TLS :6666<br/>mensagens + heartbeat| MB
     MB <-->|JDBC| DBB
+    MB -.->|promocao apos timeout| D
+    MB -.->|promocao apos timeout| W
+    MB -.->|promocao apos timeout| P
     M --> F
     D -->|HTTPS| F
     P -->|HTTPS| F
@@ -121,7 +125,7 @@ Durante o desenvolvimento, os componentes podem ser executados na mesma máquina
 - GlassFish: publicação da aplicação Web.
 - Clientes: Desktop, navegador e Python.
 
-Na demonstração final, o MySQL deverá ser acessível pela rede e os clientes/middlewares deverão executar em hosts distintos, conforme o enunciado. O endereço do banco é configurável por variável de ambiente; não deve ser codificado nas classes Java.
+Na demonstração final, o MySQL deverá ser acessível pela rede e os clientes/middlewares deverão executar em hosts distintos, conforme o enunciado. O endereço do banco é configurável por variável de ambiente; não deve ser codificado nas classes Java. Para demonstrar tolerância à falha física, o Banco B também deve estar em outra instância/host, e não apenas em outro schema do mesmo MySQL.
 
 ## 4. Módulos do repositório
 
@@ -141,13 +145,16 @@ Sistemas-Distribuidos-Backup/
 │       │   ├── Util.java
 │       │   ├── DesktopJsonRecepcaoThread.java
 │       │   ├── TerceirosJsonRecepcaoThread.java
+│       │   ├── replication/             # Replicação TLS, heartbeat e promoção do reserva
+│       │   ├── advertising/             # Emissor UDP multicast
 │       │   └── database/
 │       │       ├── DatabaseConfig.java
 │       │       ├── DatabaseConnection.java
 │       │       ├── MensagemDAO.java
 │       │       └── TestarConexaoMySQL.java
-│       ├── data/logs/                   # Gerado em execução; não versionar
-│       └── figurinhas/                  # Recursos visuais do middleware
+│       ├── data/                        # Configuração TLS, marcador e logs locais; não versionar
+│       ├── figurinhas/                  # Recursos visuais do chat
+│       └── publicidade/                 # Banners/GIFs anunciados por multicast
 ├── SD-v6/
 │   └── Chat_Cliente_Web/
 │       └── pom.xml
@@ -434,7 +441,7 @@ O segredo e as credenciais são lidos do ambiente do processo. Não os grave em 
 
 As imagens ficam no diretório `figurinhas/` relativo à pasta-base do middleware. Os avatares ficam em `figurinhas/avatars/`. O middleware lista os arquivos aceitos e disponibiliza seu conteúdo por HTTPS. As extensões de imagem reconhecidas incluem PNG, GIF, JPG, JPEG e WEBP.
 
-A pasta pode ser preenchida com os arquivos visuais do projeto. Os arquivos de imagem precisam ser distribuídos junto com a implantação do middleware; não são gravados na tabela `mensagens`.
+A pasta pode ser preenchida com os arquivos visuais do projeto. Os arquivos de imagem precisam ser distribuídos com a implantação dos dois middlewares, usando os mesmos nomes e conteúdos em A e B; não são gravados na tabela `mensagens`. O catálogo de publicidade é anunciado periodicamente por UDP multicast (padrão `239.255.42.99:5005`) e o arquivo é recuperado por HTTPS em `/publicidade/{arquivo}`. Desktop e Python recebem o datagrama diretamente. O navegador recebe o aviso por WebSocket do gateway executado no GlassFish, pois navegadores não recebem UDP multicast diretamente.
 
 ### 9.2. Logs
 
@@ -559,7 +566,7 @@ Na demonstração distribuída, os parâmetros usados pelo navegador devem apont
 
 ### 12.2. Endereço do cliente Python
 
-O cliente Python utiliza o host `127.0.0.1` e a porta `6665` na configuração local atual. Para outro host, altere o endereço em `config.json` ou utilize o mecanismo de configuração suportado pelo cliente. O certificado da CA deve continuar sendo validado; não desative a verificação TLS.
+O cliente Python utiliza o host `127.0.0.1` e a porta `6665` na configuração local atual. Para failover, configure `CHAT_SERVER_HOST` e `CHAT_SERVER_BACKUP_HOSTS` (lista separada por vírgulas) ou use `scripts/windows/configurar-clientes-failover.ps1`. A interface multicast local é definida por `CHAT_AD_MULTICAST_INTERFACE` (IPv4 da interface ligada ao hotspot). O certificado da CA deve continuar sendo validado; não desative a verificação TLS.
 
 ### 12.3. Banco de dados
 
@@ -574,10 +581,14 @@ O endereço do MySQL é separado do endereço do middleware e é configurado pel
 - inicialização do middleware com consulta do total de mensagens persistidas;
 - comunicação JSON/TLS do cliente Desktop;
 - comunicação JSON/TLS do cliente Python;
-- comunicação HTTPS do cliente Web após ajuste do consumo da API;
+- comunicação HTTPS do cliente Web e consumo JSON do catálogo de figurinhas;
 - consulta do histórico armazenado no MySQL;
 - preservação do histórico após encerrar e reiniciar o middleware;
-- consulta e envio de mensagens no fluxo de desenvolvimento local.
+- conexão JDBC independente com os schemas `chat_distribuido` e `chat_distribuido_b`;
+- envio pelos três clientes com replicação síncrona A→B e conferência dos mesmos `message_id`;
+- reinicialização dos dois processos mantendo os registros persistidos;
+- inicialização headless do serviço Python na porta 6665;
+- recebimento de ao menos uma mensagem replicada pelo receptor TLS do B.
 
 ### 13.2. Testes ainda necessários
 
@@ -590,38 +601,75 @@ O endereço do MySQL é separado do endereço do middleware e é configurado pel
 | Execução sem IDE | Iniciar middleware e clientes empacotados com NetBeans fechado. | Aplicação continua funcional. |
 | Múltiplas instâncias | Executar 2 Web, 2 Desktop e 2 Python. | Seis instâncias interagem. |
 | Rede distribuída | Usar vários computadores conectados ao mesmo hotspot/rede. | IPs, hosts e conexões reais demonstráveis. |
-| Publicidade multicast | Alterar publicidade por aviso multicast. | Clientes atualizam a imagem sincronizadamente. |
-| Replicação síncrona A→B | Iniciar B em `--replica-only`, habilitar replicação em A e enviar mensagens pelos três clientes. | Mesmo `message_id` aparece nos dois bancos; ACK de A somente após ACK de B. |
-| Idempotência | Reenviar ao B uma replicação já recebida com o mesmo `message_id`. | B confirma duplicata idêntica sem criar segunda linha e rejeita ID conflitante. |
-| Banco B e failover | Derrubar Middleware A e continuar com B. | **Ainda pendente:** promoção de B e reconexão automática dos clientes. |
+| Publicidade multicast | Colocar PNG/GIF em A e B e acompanhar os banners nos três clientes. | Publisher UDP, receptores Desktop/Python e gateway WebSocket Web implementados; falta validar recepção simultânea em hosts e rede/hotspot. |
+| Replicação síncrona A→B | Iniciar B em `--replica-only`, habilitar replicação em A e enviar mensagens pelos três clientes. | **Testado pelo grupo:** mesmo `message_id` nos dois bancos e ACK de A após confirmação do B. |
+| Idempotência | Reenviar ao B uma replicação já recebida com o mesmo `message_id`. | Código verifica duplicata idêntica e rejeita ID conflitante; comprovação específica por reenvio ainda pode ser registrada. |
+| Failover | Deixar clientes abertos, interromper A e continuar usando B sem reiniciar clientes. | Promoção automática e retries A/B implementados; teste explícito de queda de A e continuidade ainda pendente. |
+| Independência física | Colocar A/DB A e B/DB B em hosts/instâncias separados. | Pendente para a videoaula; os testes atuais usam dois schemas na mesma instância MySQL local. |
 
 ## 14. Banco B, replicação e tolerância a falhas
 
-O Banco B foi criado com a mesma tabela `mensagens` do Banco A, mas sob o schema independente `chat_distribuido_b`. Os scripts estão em `database/schema.sql` e `database/schema_b.sql`.
+O Banco B utiliza a mesma tabela `mensagens` do Banco A, no schema `chat_distribuido_b`. Os scripts de criação estão em `database/schema.sql` e `database/schema_b.sql`.
 
-A primeira fase de replicação está implementada no código:
+### Replicação síncrona A → B
 
-- Middleware A persiste a mensagem no Banco A;
-- quando `CHAT_REPLICATION_ENABLED=true`, envia um envelope interno com a mensagem original e seu HTML ao Middleware B por TLS;
-- B autentica o envelope por token compartilhado, valida a mensagem e grava no Banco B;
-- a gravação no B é idempotente por `message_id`, validando que uma repetição possua o mesmo conteúdo;
-- B devolve ACK interno e A só então confirma a mensagem ao cliente.
+A replicação foi testada pelo grupo com mensagens enviadas pelos clientes Desktop, Web e Python. O fluxo atual é:
 
-Para teste local, B é iniciado em modo `--replica-only`, escutando na porta interna `6666`. Os scripts PowerShell estão em `scripts/windows/`.
+1. A valida e renderiza a mensagem recebida.
+2. A persiste o registro no Banco A usando o `message_id` original.
+3. A envia um envelope JSON/TLS ao receptor interno do B na porta 6666, contendo a mensagem e o HTML renderizado.
+4. B valida o token compartilhado, o tipo e os campos da mensagem e persiste no Banco B.
+5. B responde ACK interno; A só então confirma a mensagem ao cliente.
 
-**Atenção ao estado:** a implementação de replicação precisa ser testada ponta a ponta no ambiente local. Se B estiver indisponível, A não deve confirmar a mensagem ao cliente; a linha já gravada no Banco A pode permanecer sem confirmação enquanto o reserva estiver fora do ar. Ainda não há uma fila persistente de reenvio automático.
+O DAO de B usa `message_id` para idempotência: uma repetição com dados idênticos é reconhecida como duplicata, enquanto um ID reutilizado com conteúdo divergente é rejeitado. Os testes realizados também confirmaram que os registros continuam nos dois bancos após reiniciar os processos.
 
-Continuam pendentes para atender integralmente ao requisito de 6 pontos:
+Se B não responder, A não confirma a mensagem ao cliente. O registro já gravado em A pode permanecer sem confirmação; ainda não existe uma fila persistente geral de reenvio para recuperar mensagens não replicadas.
 
-- teste de replicação com A e B em hosts/instâncias independentes;
-- promoção automática do B para abrir os serviços de clientes após falha de A;
-- clientes configurados com os dois endereços e reconexão/failover automático;
-- continuidade do recebimento e persistência de novas mensagens pelo B;
-- demonstração de desligamento de A, continuidade no B e bancos independentes.
+### Promoção automática e reconexão
 
-Duas bases no mesmo MySQL Server permitem validar o fluxo de dados, mas não demonstram tolerância real à falha do servidor MySQL. Para a videoaula, Banco A e Banco B devem estar em instâncias/hosts independentes.
+B inicia com `--replica-only`, mantendo o receptor TLS e monitorando os heartbeats do principal. Depois de expirar o tempo de promoção sem heartbeat, B inicia os listeners Desktop, Python e HTTPS, passa a responder `ACTIVE` e grava o marcador `data/middleware-reserva-ativo.flag`. A consulta o estado de B periodicamente e, ao receber `ACTIVE` ou perder o lease, interrompe seus listeners. Os clientes possuem endpoints A/B e repetem solicitações durante a janela de promoção, conservando o ID da mensagem para que uma tentativa após resposta perdida seja idempotente.
 
-## 15. Segurança e arquivos que não devem ser versionados
+A promoção e os retries estão implementados no código. **Ainda falta registrar o teste operacional em que A é efetivamente encerrado enquanto as três modalidades de cliente permanecem abertas e continuam a conversar por B.** A independência física também deve ser comprovada com middlewares e bancos em hosts/instâncias separados. Dois schemas na mesma instância MySQL validam a replicação lógica, mas não protegem contra falha física do host/serviço MySQL.
+
+### Recuperação e retorno manual ao A
+
+Depois de B assumir o atendimento, as novas mensagens passam a ser gravadas em B; A pode ficar desatualizado. Não remova o marcador de promoção nem reinicie A como principal antes de sincronizar A com B.
+
+- Para desenvolvimento com os dois schemas na mesma instância MySQL, execute primeiro `database/verificar-sincronizacao.sql`. Se não houver IDs conflitantes, execute `database/sincronizar-banco-a-com-b.sql` e rode novamente a verificação.
+- Se os bancos estiverem em hosts diferentes, a recuperação deve usar exportação/importação via staging no host A; os scripts SQL locais não fazem conexão entre servidores.
+- Encerre A e B, confirme que A recebeu todos os registros de B e só então execute `scripts/windows/resetar-reserva.ps1`. O script exige a confirmação literal `BANCO_A_SINCRONIZADO` e depois `RESETAR`.
+- Inicie B primeiro em standby e A depois. A só deve assumir quando o B confirmar `STANDBY`.
+
+## 15. Failover e publicidade multicast
+
+O procedimento completo está em [GUIA_FAILOVER_PUBLICIDADE.md](GUIA_FAILOVER_PUBLICIDADE.md). Os scripts de inicialização e configuração estão em `scripts/windows/`.
+
+### Publicidade sincronizada
+
+O middleware que está em estado ACTIVE percorre `SD-v4/Chat_Middleware_Service/publicidade/` e anuncia o nome do próximo arquivo por UDP multicast. Valores padrão:
+
+- grupo: `239.255.42.99`;
+- porta UDP: `5005`;
+- intervalo: `10` segundos (configurável por `CHAT_AD_INTERVAL_SECONDS`).
+
+O datagrama contém uma mensagem JSON `ADVERTISEMENT_UPDATE` com o nome do arquivo. Desktop Java e Python ingressam no grupo multicast e baixam a imagem/GIF pelo HTTPS do middleware ativo. O cliente Python utiliza Pillow para exibir quadros de GIF animado. O navegador não recebe multicast diretamente: `AdvertisementMulticastBridge` no GlassFish recebe UDP e retransmite o JSON ao navegador por WebSocket (`/ws/publicidade`); o navegador obtém a imagem pela API HTTPS com failover A/B.
+
+Copie os mesmos arquivos de imagem, com nomes e conteúdos idênticos, para a pasta `publicidade/` dos dois middlewares. A pasta contém `chat-banner-exemplo.png`. Extensões aceitas: PNG, GIF, JPG, JPEG e WEBP.
+
+A publicidade não deve impedir que o chat suba: se uma interface não suportar multicast, o middleware registra um aviso e mantém os serviços de conversa ativos. Para cumprir o item de avaliação, porém, a demonstração deve comprovar os avisos sincronizados nos três clientes. Alguns hotspots isolam clientes ou bloqueiam multicast; nesse caso, use uma rede que encaminhe multicast. O TTL do emissor é 1, adequado ao segmento local.
+
+Para a videoaula completa, coloque GlassFish em um host que continue ativo quando o Middleware A for desligado; caso GlassFish esteja no próprio host de A, a página Web deixará de existir mesmo que o B assuma o backend.
+
+### Configuração de rede e TLS para a videoaula
+
+- Execute `scripts/windows/configurar-clientes-failover.ps1` em cada computador de cliente/GlassFish, indicando os IPs/DNS de A e B e, se necessário, o IPv4 local de `CHAT_AD_MULTICAST_INTERFACE`.
+- No host do Middleware A, passe `-ReplicationHost` com o endereço do B no script `iniciar-middleware-a.ps1`.
+- Inicie GlassFish depois de definir as variáveis de ambiente para que os JSPs recebam os endereços A/B e o gateway WebSocket herde a configuração multicast.
+- Os certificados de cada middleware precisam conter no SAN o IP/DNS usado para acessá-lo; clientes Java, Python e navegador devem confiar na mesma CA pública.
+- A porta 6666 deve ser permitida somente entre os middlewares; as portas 6664, 6665 e 8443 devem ser alcançáveis pelos clientes. A porta UDP 5005 precisa ser permitida no segmento local. O script opcional `scripts/windows/permitir-publicidade-multicast.ps1` cria uma regra de entrada limitada à sub-rede local e exige PowerShell como administrador.
+- Banco A e Banco B devem ficar em instâncias/hosts separados para a demonstração de tolerância a falha física.
+
+## 16. Segurança e arquivos que não devem ser versionados
 
 O projeto utiliza TLS/HTTPS para os canais atuais de comunicação cliente–middleware. Os clientes Desktop e Python validam a CA pública do projeto; o navegador deve confiar na mesma CA para acessar o HTTPS sem aviso de certificado.
 

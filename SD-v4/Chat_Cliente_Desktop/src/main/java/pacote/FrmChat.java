@@ -32,11 +32,21 @@ import java.nio.charset.StandardCharsets;
 import java.awt.Image;
 import javax.swing.JOptionPane;
 import javax.net.ssl.SSLSocket;
+import pacote.advertising.MulticastAdvertisementListener;
+import java.awt.Container;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.SwingConstants;
 
 public class FrmChat extends javax.swing.JFrame {
     private volatile boolean emManutencao = false;
     private volatile boolean envioEmAndamento = false;
     private volatile boolean falhaMonitorRegistrada = false;
+    private MulticastAdvertisementListener listenerPublicidade;
+    private JLabel lblPublicidade;
+    private volatile String ultimaPublicidadeSolicitada;
 
     private final JPopupMenu popupEmojis = new JPopupMenu();
 
@@ -120,10 +130,7 @@ public class FrmChat extends javax.swing.JFrame {
 
             
             try (SSLSocket cliente =
-            ConfiguracaoTLSCliente.conectar(
-                    Util.Servidor,
-                    Util.PortaRecepcaoJsonTLS
-            )) {
+            Util.conectarMiddleware(Util.PortaRecepcaoJsonTLS)) {
 
             conexaoEstabelecida = true;
 
@@ -244,7 +251,189 @@ public class FrmChat extends javax.swing.JFrame {
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
     }
-    
+    private void configurarPainelPublicidade() {
+        Container conteudoOriginal = getContentPane();
+
+        JPanel painelRaiz = new JPanel(new BorderLayout(0, 5));
+
+        lblPublicidade = new JLabel(
+                "Aguardando publicidade...",
+                SwingConstants.CENTER
+        );
+
+        lblPublicidade.setHorizontalAlignment(SwingConstants.CENTER);
+        lblPublicidade.setVerticalAlignment(SwingConstants.CENTER);
+
+        javax.swing.JScrollPane areaPublicidade =
+                new javax.swing.JScrollPane(lblPublicidade);
+
+        areaPublicidade.setPreferredSize(new Dimension(600, 125));
+        areaPublicidade.setBorder(
+                BorderFactory.createTitledBorder("Publicidade")
+        );
+
+        areaPublicidade.setHorizontalScrollBarPolicy(
+                javax.swing.JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        );
+
+        areaPublicidade.setVerticalScrollBarPolicy(
+                javax.swing.JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
+        );
+
+        setContentPane(painelRaiz);
+
+        painelRaiz.add(conteudoOriginal, BorderLayout.CENTER);
+        painelRaiz.add(areaPublicidade, BorderLayout.SOUTH);
+
+        pack();
+        setLocationRelativeTo(null);
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent evento) {
+                encerrarPublicidadeMulticast();
+            }
+
+            @Override
+            public void windowClosed(WindowEvent evento) {
+                encerrarPublicidadeMulticast();
+            }
+        });
+    }
+
+    private void iniciarPublicidadeMulticast() {
+        try {
+            listenerPublicidade =
+                    new MulticastAdvertisementListener(
+                            this::carregarPublicidade
+                    );
+
+            listenerPublicidade.start();
+
+            System.out.println(
+                    "Receptor de publicidade do Desktop iniciado."
+            );
+
+        } catch (Exception erro) {
+            System.err.println(
+                    "Nao foi possivel iniciar a publicidade no Desktop: "
+                    + erro.getMessage()
+            );
+        }
+    }
+
+    private void encerrarPublicidadeMulticast() {
+        if (listenerPublicidade != null) {
+            listenerPublicidade.close();
+            listenerPublicidade = null;
+        }
+    }
+
+    private void carregarPublicidade(String nomeArquivo) {
+        if (nomeArquivo == null
+                || !nomeArquivo.matches(
+                        "[A-Za-z0-9._-]{1,180}\\.(png|gif|jpg|jpeg|webp)"
+                )
+                || nomeArquivo.contains("..")) {
+            return;
+        }
+
+        if (nomeArquivo.equals(ultimaPublicidadeSolicitada)) {
+            return;
+        }
+
+        ultimaPublicidadeSolicitada = nomeArquivo;
+
+        String base = Util.URL_PUBLICIDADE;
+
+        if (base == null || base.isBlank()) {
+            System.err.println(
+                    "URL da publicidade nao foi configurada no Desktop."
+            );
+            ultimaPublicidadeSolicitada = null;
+            return;
+        }
+
+        if (!base.endsWith("/")) {
+            base += "/";
+        }
+
+        String nomeCodificado = URLEncoder.encode(
+                nomeArquivo,
+                StandardCharsets.UTF_8
+        ).replace("+", "%20");
+
+        String endereco = base + nomeCodificado;
+
+        Thread.ofVirtual()
+                .name("desktop-carregar-publicidade")
+                .start(() -> {
+                    HttpURLConnection conexao = null;
+
+                    try {
+                        conexao = (HttpURLConnection)
+                                new URL(endereco).openConnection();
+
+                        conexao.setConnectTimeout(5000);
+                        conexao.setReadTimeout(8000);
+
+                        int status = conexao.getResponseCode();
+
+                        if (status != HttpURLConnection.HTTP_OK) {
+                            throw new IOException(
+                                    "Servidor retornou HTTP " + status
+                            );
+                        }
+
+                        byte[] dados;
+
+                        try (var entrada = conexao.getInputStream()) {
+                            dados = entrada.readAllBytes();
+                        }
+
+                        ImageIcon imagem = new ImageIcon(dados);
+
+                        if (imagem.getIconWidth() <= 0
+                                || imagem.getIconHeight() <= 0) {
+                            throw new IOException(
+                                    "O arquivo recebido nao e uma imagem valida."
+                            );
+                        }
+
+                        SwingUtilities.invokeLater(() -> {
+                            if (!isDisplayable() || lblPublicidade == null) {
+                                return;
+                            }
+
+                            lblPublicidade.setText("");
+                            lblPublicidade.setIcon(imagem);
+                            lblPublicidade.setToolTipText(
+                                    "Publicidade: " + nomeArquivo
+                            );
+
+                            lblPublicidade.revalidate();
+                            lblPublicidade.repaint();
+                        });
+
+                        System.out.println(
+                                "Publicidade exibida no Desktop: " + nomeArquivo
+                        );
+
+                    } catch (Exception erro) {
+                        ultimaPublicidadeSolicitada = null;
+
+                        System.err.println(
+                                "Nao foi possivel carregar a publicidade "
+                                + nomeArquivo + ": " + erro.getMessage()
+                        );
+
+                    } finally {
+                        if (conexao != null) {
+                            conexao.disconnect();
+                        }
+                    }
+                });
+    }
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmChat.class.getName());
     public FrmChat() {
         try {
@@ -266,6 +455,8 @@ public class FrmChat extends javax.swing.JFrame {
 
         initComponents();
         configurarPopupEmojis();
+        configurarPainelPublicidade();
+        iniciarPublicidadeMulticast();
         iniciarMonitorServidor();
     }
     @SuppressWarnings("unchecked")
@@ -889,10 +1080,7 @@ public class FrmChat extends javax.swing.JFrame {
             while (!Thread.currentThread().isInterrupted()) {
 
                 try (SSLSocket cliente =
-                    ConfiguracaoTLSCliente.conectar(
-                            Util.Servidor,
-                            Util.PortaRecepcaoJsonTLS
-                    )) {
+                    Util.conectarMiddleware(Util.PortaRecepcaoJsonTLS)) {
 
         String mensagens;
 

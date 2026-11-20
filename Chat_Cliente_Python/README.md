@@ -1,18 +1,19 @@
 # Chat Cliente Python
 
-Cliente gráfico em Tkinter para o middleware Java, com protocolo JSON sobre TLS e renderização do histórico HTML compartilhado pelos clientes Desktop e Web.
+Cliente gráfico Tkinter para o middleware Java. Utiliza o mesmo envelope JSON dos clientes Java, TCP/TLS para mensagens e histórico, HTTPS para imagens e catálogo de figurinhas e UDP multicast para receber anúncios de publicidade.
 
 ## Requisitos
 
-- Python 3.10 ou superior.
-- Tkinter (normalmente incluído na instalação do Python para Windows).
-- Pillow para exibição de PNG, JPEG, GIF e WebP.
-- Middleware Java iniciado com o botão **Serviço Terceiros** do painel.
-- Certificado público `chat-root-ca.cer` em `SD-v4/certificados/`.
+- Windows 10/11 ou ambiente compatível.
+- Python 3.10 ou superior (validado no projeto com Python 3.14).
+- Tkinter.
+- Pillow para exibir imagens e animar GIFs no painel de publicidade.
+- Certificado público `SD-v4/certificados/chat-root-ca.cer`.
+- Middleware A ou B ativo e acessível na rede.
 
 ## Instalação
 
-No terminal do VS Code, dentro desta pasta:
+Na pasta `Chat_Cliente_Python`:
 
 ```powershell
 py --version
@@ -21,52 +22,74 @@ py -m pip install -r requirements.txt
 
 ## Configuração
 
-Confira `config.json`:
+O arquivo `config.json` contém valores de desenvolvimento. Para execução distribuída, prefira configurar as variáveis de ambiente no computador do cliente:
 
-```json
-{
-  "server": { "host": "127.0.0.1", "port": 6665 },
-  "tls": { "ca_file": "../SD-v4/certificados/chat-root-ca.cer" },
-  "web": { "port": 8443 },
-  "timeout_seconds": 15,
-  "history_interval_seconds": 3
-}
-```
+| Variável | Uso | Exemplo local |
+|---|---|---|
+| `CHAT_SERVER_HOST` | Middleware principal | `127.0.0.1` |
+| `CHAT_SERVER_BACKUP_HOSTS` | Um ou mais hosts reserva separados por vírgula | `127.0.0.1` |
+| `CHAT_SERVER_BACKUP_HOST` | Host reserva adicional | `127.0.0.1` |
+| `CHAT_SERVER_PYTHON_PORT` | Porta JSON/TLS | `6665` |
+| `CHAT_SERVER_WEB_PORT` | Porta HTTPS dos recursos | `8443` |
+| `CHAT_FAILOVER_CLIENT_WAIT_SECONDS` | Janela de tentativas durante promoção | `25` |
+| `CHAT_CA_FILE` | Caminho alternativo da CA pública | caminho para `chat-root-ca.cer` |
+| `CHAT_AD_MULTICAST_GROUP` | Grupo de publicidade | `239.255.42.99` |
+| `CHAT_AD_MULTICAST_PORT` | Porta UDP multicast | `5005` |
+| `CHAT_AD_MULTICAST_INTERFACE` | IPv4 local da interface conectada à rede multicast | IPv4 Wi-Fi local |
 
-O campo `server.host` deve corresponder a um nome ou IP presente no SAN do certificado do middleware. O mesmo host será utilizado para baixar as imagens do serviço HTTPS. O cliente aceita recursos de imagem apenas por HTTPS, usando a mesma CA e verificando o certificado e o nome do servidor. Não há desativação da validação TLS.
+O endereço de cada middleware deve corresponder a um IP/DNS presente no SAN do certificado apresentado. A conexão verifica a CA e o hostname; não desative essa validação para contornar erros de certificado.
 
-O cliente procura automaticamente `SD-v4/certificados/chat-root-ca.cer` em layouts comuns do repositório. Também é possível definir um caminho absoluto pela variável `CHAT_CA_FILE`.
-
-## Execução e testes
+Para configurar as variáveis A/B e multicast no Windows, a partir da raiz do repositório, use:
 
 ```powershell
-py -m unittest discover -s tests -v
-py -m compileall -q .
-py diagnostico.py
+.\scripts\windows\configurar-clientes-failover.ps1 `
+    -PrimaryHost "IP_DO_MIDDLEWARE_A" `
+    -BackupHost "IP_DO_MIDDLEWARE_B" `
+    -MulticastInterface "IPV4_LOCAL_DA_INTERFACE"
+```
+
+O parâmetro `MulticastInterface` é o IPv4 da própria máquina cliente na interface conectada ao hotspot/rede, e não o IP do servidor. Depois da configuração, feche e reabra o VS Code/terminal para o processo receber as variáveis.
+
+## Execução
+
+```powershell
 py main.py
 ```
 
-Inicie o middleware, ative **Serviço Terceiros** e execute os comandos acima. O teste de diagnóstico verifica o TCP, o handshake TLS e uma consulta JSON `HISTORY_REQUEST`.
+O diagnóstico independente testa TCP, TLS e a solicitação do histórico:
+
+```powershell
+py diagnostico.py
+```
+
+Testes automatizados e verificação de sintaxe:
+
+```powershell
+py -m pytest -q tests
+py -m compileall -q .
+```
 
 ## Funcionalidades
 
-- Envio de mensagens de texto com destinatário opcional.
-- Histórico compartilhado com os clientes Java Desktop e Web.
-- Atualização automática do histórico e botão para atualização manual.
-- Renderização de tags HTML comuns do middleware, incluindo parágrafos, títulos, negrito, itálico, sublinhado, cores e alinhamento.
-- Exibição de imagens referenciadas no HTML, obtidas do endpoint HTTPS do middleware.
-- Composição de mensagens com múltiplas linhas; `Ctrl + Enter` envia.
-- TLS 1.2/1.3 com validação da CA e do hostname.
+- Envio de mensagens de texto, inclusive Unicode/emoji.
+- Seletor de emojis.
+- Consulta do catálogo HTTPS e envio de figurinhas.
+- Histórico HTML compartilhado com Desktop e Web.
+- Atualização periódica e atualização manual do histórico.
+- Carregamento de imagens por HTTPS com validação de certificado e hostname.
+- Painel de publicidade que recebe `ADVERTISEMENT_UPDATE` via UDP multicast.
+- Exibição de banners e animação de GIF quando Pillow está instalado.
+- Retentativa de entrada no grupo multicast após queda/reconexão da interface.
+- Failover do transporte: tenta o middleware principal e os hosts reserva; repete a mesma requisição/ID durante a janela de promoção.
 
-## Protocolo de rede
+## Protocolo e portas
 
-- TCP com TLS 1.2/1.3 na porta padrão `6665`.
-- Uma requisição JSON por conexão, terminada por `LF` (`\n`).
+- TCP/TLS 1.2 ou 1.3, padrão `6665`, uma mensagem JSON por conexão terminada em `LF` (`\n`).
+- HTTPS padrão `8443` para catálogo de figurinhas, imagens, publicidade e outros recursos.
+- UDP multicast padrão `239.255.42.99:5005` para avisos de publicidade (o navegador usa o gateway WebSocket no GlassFish; o Python recebe UDP diretamente).
 - `protocolVersion`: `1`.
-- Envio: `SEND_MESSAGE`.
-- Consulta do histórico: `HISTORY_REQUEST`.
-- Confirmação: `ACK`.
-- Histórico: `HISTORY_RESPONSE` com conteúdo HTML.
-- Erro: `ERROR`.
+- Tipos comuns: `SEND_MESSAGE`, `HISTORY_REQUEST`, `HISTORY_RESPONSE`, `ACK`, `ERROR`; publicidade usa `ADVERTISEMENT_UPDATE`.
 
-A renderização de imagens depende de o middleware fornecer tags HTML `<img src="...">` com URLs ou caminhos relativos válidos nos endpoints HTTPS do projeto. Recursos externos ou HTTP sem TLS são recusados deliberadamente.
+## Observação sobre multicast
+
+O funcionamento de TCP/TLS não garante que o hotspot encaminhe multicast. Alguns celulares/roteadores isolam clientes Wi-Fi ou bloqueiam UDP multicast. Caso o cliente não receba anúncios, verifique a interface configurada, o firewall UDP local e teste numa rede que encaminhe multicast. O banner pode ser baixado por HTTPS somente depois que o aviso multicast chega.

@@ -1,5 +1,6 @@
 
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
+<%@ include file="/WEB-INF/jspf/middleware-config.jspf" %>
 <%!
     private String escaparAtributo(String valor) {
         if (valor == null) return "";
@@ -20,18 +21,9 @@
         return;
     }
 
-    String baseUrl = application.getInitParameter(
-            "middleware.publicBaseUrl"
-    );
-
-    if (baseUrl == null || baseUrl.isBlank()) {
-        baseUrl = "http://127.0.0.1:8081";
-    }
-
-    baseUrl = baseUrl.replaceAll("/+$", "");
-
-    String middlewareSeguro = escaparAtributo(baseUrl);
     String nicknameSeguro = escaparAtributo(nickname);
+    String websocketPath = request.getContextPath() + "/ws/publicidade";
+    String websocketSeguro = escaparAtributo(websocketPath);
 %>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -98,16 +90,43 @@
             font-size: .84rem;
             padding: 10px 0;
         }
+        .advertisement {
+            width: 100%;
+            min-height: 86px;
+            margin: 0 0 13px;
+            padding: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #e8edf5;
+            border-radius: 12px;
+            background: #f8faff;
+            overflow: hidden;
+        }
+        .advertisement img {
+            display: block;
+            max-width: 100%;
+            max-height: 190px;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+        .advertisement span { color: #8993a6; font-size: .75rem; }
     </style>
 </head>
 
 <body>
 
-    <div id="historyConfig"
-         hidden
-         data-middleware="<%= middlewareSeguro %>"
-         data-nickname="<%= nicknameSeguro %>">
-    </div>
+    <div id="middlewareConfig" hidden
+         data-primary="<%= middlewarePrimarySafe %>"
+         data-backup="<%= middlewareBackupSafe %>"
+         data-websocket="<%= websocketSeguro %>"
+         data-failover-wait="<%= failoverWaitMs %>"></div>
+    <div id="historyConfig" hidden data-nickname="<%= nicknameSeguro %>"></div>
+
+    <section class="advertisement" aria-label="Publicidade sincronizada">
+        <span id="advertisementStatus">Aguardando publicidade sincronizada...</span>
+        <img id="advertisementImage" alt="Publicidade" hidden>
+    </section>
 
     <div class="history-head">
         <strong>Conversa</strong>
@@ -118,10 +137,11 @@
         Carregando mensagens...
     </div>
 
+    <script src="<%= request.getContextPath() %>/js/middleware-client.js"></script>
     <script>
         const configuracao = document.getElementById("historyConfig");
-
-        const middleware = configuracao.dataset.middleware;
+        const middlewareConfig = document.getElementById("middlewareConfig");
+        const middlewareClient = window.createMiddlewareClient(middlewareConfig);
         const nickname = configuracao.dataset.nickname;
 
         const conversa = document.getElementById("conversa");
@@ -129,6 +149,7 @@
 
         let consultando = false;
         let ultimoHistorico = null;
+        let urlPublicidadeAtual = null;
 
         function gerarIdMensagem() {
 
@@ -142,16 +163,23 @@
         }
 
         function ajustarUrlsImagens() {
+            // Mantem a URL relativa original para poder trocar de middleware
+            // quando o failover atualizar middlewareClient.base().
+            conversa.querySelectorAll("img").forEach(imagem => {
+                let caminho = imagem.dataset.middlewareResource || "";
+                const origem = imagem.getAttribute("src") || "";
 
-            const imagens = conversa.querySelectorAll(
-                    'img[src^="/figurinhas/"]'
-            );
+                if (!caminho && origem.startsWith("/figurinhas/")) {
+                    caminho = origem;
+                    imagem.dataset.middlewareResource = caminho;
+                }
 
-            imagens.forEach(imagem => {
-
-                const caminho = imagem.getAttribute("src");
-
-                imagem.src = middleware + caminho;
+                if (caminho.startsWith("/figurinhas/")) {
+                    const destino = middlewareClient.base() + caminho;
+                    if (imagem.src !== new URL(destino, window.location.href).href) {
+                        imagem.src = destino;
+                    }
+                }
             });
         }
 
@@ -181,8 +209,8 @@
 
             try {
 
-                const resposta = await fetch(
-                        middleware + "/api/messages",
+                const resposta = await middlewareClient.fetch(
+                        "/api/messages",
                         {
                             method: "POST",
                             headers: {
@@ -214,16 +242,14 @@
                 const historico = dados.content || "";
 
                 if (historico !== ultimoHistorico) {
-
                     conversa.innerHTML = historico;
-
-                    ajustarUrlsImagens();
-
                     ultimoHistorico = historico;
-
                     conversa.scrollTop = conversa.scrollHeight;
                 }
 
+                // Tambem atualiza os recursos quando o historico nao mudou,
+                // pois o endpoint ativo pode ter mudado durante o failover.
+                ajustarUrlsImagens();
                 conversa.classList.remove("connection");
 
                 status.textContent =
@@ -254,8 +280,78 @@
             }
         }
 
-        atualizarConversa();
+        function iniciarPublicidadeWebSocket() {
+            const caminho = middlewareConfig.dataset.websocket;
+            const endereco = new URL(caminho, window.location.href);
+            endereco.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            let reconexao = null;
+            let socket = null;
 
+            function conectar() {
+                try {
+                    socket = new WebSocket(endereco.toString());
+                    socket.onopen = () => {
+                        document.getElementById("advertisementStatus").textContent = "Publicidade sincronizada";
+                    };
+                    socket.onmessage = async evento => {
+                        try {
+                            const aviso = JSON.parse(evento.data);
+                            if (aviso.type !== "ADVERTISEMENT_UPDATE") return;
+                            const nome = aviso.content || "";
+                            if (!/^[A-Za-z0-9._-]{1,180}\.(png|gif|jpg|jpeg|webp)$/i.test(nome) || nome.includes("..")) return;
+                            const imagem = document.getElementById("advertisementImage");
+                            const resposta = await middlewareClient.fetch(
+                                    "/publicidade/" + encodeURIComponent(nome) + "?v=" + Date.now(),
+                                    { method: "GET" }
+                            );
+                            if (!resposta.ok) {
+                                throw new Error("HTTP " + resposta.status + " ao baixar a publicidade.");
+                            }
+
+                            const arquivo = await resposta.blob();
+                            const novaUrl = URL.createObjectURL(arquivo);
+                            const urlAnterior = urlPublicidadeAtual;
+                            urlPublicidadeAtual = novaUrl;
+                            imagem.hidden = false;
+                            imagem.onerror = () => {
+                                document.getElementById("advertisementStatus").textContent = "Nao foi possivel exibir a publicidade.";
+                                if (urlPublicidadeAtual === novaUrl) {
+                                    URL.revokeObjectURL(novaUrl);
+                                    urlPublicidadeAtual = null;
+                                }
+                            };
+                            imagem.onload = () => {
+                                document.getElementById("advertisementStatus").textContent = "Publicidade: " + nome;
+                                if (urlAnterior) URL.revokeObjectURL(urlAnterior);
+                            };
+                            imagem.src = novaUrl;
+                        } catch (erro) {
+                            console.warn("Aviso de publicidade invalido:", erro);
+                        }
+                    };
+                    socket.onclose = () => {
+                        document.getElementById("advertisementStatus").textContent = "Reconectando ao gateway de publicidade...";
+                        clearTimeout(reconexao);
+                        reconexao = setTimeout(conectar, 3000);
+                    };
+                    socket.onerror = () => {
+                        try { socket.close(); } catch (erro) { }
+                    };
+                } catch (erro) {
+                    clearTimeout(reconexao);
+                    reconexao = setTimeout(conectar, 3000);
+                }
+            }
+            conectar();
+            window.addEventListener("beforeunload", () => {
+                clearTimeout(reconexao);
+                if (socket && socket.readyState <= WebSocket.OPEN) socket.close();
+                if (urlPublicidadeAtual) URL.revokeObjectURL(urlPublicidadeAtual);
+            });
+        }
+
+        iniciarPublicidadeWebSocket();
+        atualizarConversa();
         setInterval(atualizarConversa, 1800);
     </script>
 

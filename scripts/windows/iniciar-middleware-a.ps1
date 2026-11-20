@@ -1,6 +1,14 @@
 param(
     [string]$MavenPath = "",
-    [string]$ReplicationHost = "127.0.0.1"
+    [string]$DatabaseHost = "127.0.0.1",
+    [int]$DatabasePort = 3306,
+    [string]$ReplicationHost = "127.0.0.1",
+    [int]$HeartbeatIntervalMs = 2000,
+    [int]$PrimaryLeaseMs = 7000,
+    [string]$MulticastGroup = "239.255.42.99",
+    [int]$MulticastPort = 5005,
+    [int]$AdvertisementIntervalSeconds = 10,
+    [string]$MulticastInterface = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,8 +66,8 @@ $dbPasswordSecure = Read-Host "Senha do usuario MySQL chat_app" -AsSecureString
 $replicationTokenSecure = Read-Host "Informe exatamente o mesmo token usado no Middleware B" -AsSecureString
 
 try {
-    $env:CHAT_DB_HOST = "127.0.0.1"
-    $env:CHAT_DB_PORT = "3306"
+    $env:CHAT_DB_HOST = $DatabaseHost
+    $env:CHAT_DB_PORT = [string]$DatabasePort
     $env:CHAT_DB_NAME = "chat_distribuido"
     $env:CHAT_DB_USER = "chat_app"
     $env:CHAT_DB_PASSWORD = Convert-SecureStringToPlainText $dbPasswordSecure
@@ -70,6 +78,12 @@ try {
     $env:CHAT_REPLICATION_PORT = "6666"
     $env:CHAT_REPLICATION_TOKEN = Convert-SecureStringToPlainText $replicationTokenSecure
     $env:CHAT_REPLICATION_CA_FILE = $caFile
+    $env:CHAT_FAILOVER_HEARTBEAT_INTERVAL_MS = [string]$HeartbeatIntervalMs
+    $env:CHAT_FAILOVER_PRIMARY_LEASE_MS = [string]$PrimaryLeaseMs
+    $env:CHAT_AD_MULTICAST_GROUP = $MulticastGroup
+    $env:CHAT_AD_MULTICAST_PORT = [string]$MulticastPort
+    $env:CHAT_AD_INTERVAL_SECONDS = [string]$AdvertisementIntervalSeconds
+    if ($MulticastInterface) { $env:CHAT_AD_MULTICAST_INTERFACE = $MulticastInterface }
 
     Write-Host "Compilando protocolo e middleware pelo POM agregador..." -ForegroundColor Cyan
     $buildArguments = @(
@@ -119,6 +133,12 @@ finally {
     Remove-Item Env:CHAT_REPLICATION_PORT -ErrorAction SilentlyContinue
     Remove-Item Env:CHAT_REPLICATION_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:CHAT_REPLICATION_CA_FILE -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_FAILOVER_HEARTBEAT_INTERVAL_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_FAILOVER_PRIMARY_LEASE_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_AD_MULTICAST_GROUP -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_AD_MULTICAST_PORT -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_AD_INTERVAL_SECONDS -ErrorAction SilentlyContinue
+    Remove-Item Env:CHAT_AD_MULTICAST_INTERFACE -ErrorAction SilentlyContinue
     $dbPasswordSecure = $null
     $replicationTokenSecure = $null
 }

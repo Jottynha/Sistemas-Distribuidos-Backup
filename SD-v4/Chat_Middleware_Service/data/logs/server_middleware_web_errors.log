@@ -6,3 +6,9 @@
 
 2026-11-20 15:02:04 | web | INTERNO/HTTPS | 127.0.0.1 | Util.servirFigurinha | InvalidPathException: Illegal char <"> at index 1: ["beijo.png","coracao.png","dinheiro.png","fig1.gif","fig2.gif","risada.png","sorriso.png"]
 
+2026-11-20 15:22:47 | web | INTERNO/HTTPS | 127.0.0.1 | Util.servirFigurinha | InvalidPathException: Illegal char <"> at index 1: ["beijo.png","coracao.png","dinheiro.png","fig1.gif","fig2.gif","risada.png","sorriso.png"]
+
+2026-11-20 16:10:24 | web | INTERNO/HTTPS | 127.0.0.1 | Util.servirFigurinha | InvalidPathException: Illegal char <"> at index 1: ["beijo.png","coracao.png","dinheiro.png","fig1.gif","fig2.gif","risada.png","sorriso.png"]
+
+2026-11-20 17:19:23 | web | INTERNO/HTTPS | 127.0.0.1 | Util.servirFigurinha | InvalidPathException: Illegal char <"> at index 1: ["beijo.png","coracao.png","dinheiro.png","fig1.gif","fig2.gif","risada.png","sorriso.png"]
+

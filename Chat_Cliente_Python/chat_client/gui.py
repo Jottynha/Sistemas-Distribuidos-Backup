@@ -11,10 +11,11 @@ from tkinter.scrolledtext import ScrolledText
 from typing import Any, Callable
 
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image, ImageTk, ImageSequence
 except ImportError:  # mensagem amigavel caso a dependencia ainda nao tenha sido instalada
     Image = None
     ImageTk = None
+    ImageSequence = None
 
 from .config import ClientConfig
 from .protocol import (
@@ -23,6 +24,7 @@ from .protocol import (
     create_text_message,
 )
 from .transport import TLSJsonTransport
+from .advertising import MulticastAdvertisementListener
 
 
 _IMAGE_PLACEHOLDER = "[carregando imagem...]"
@@ -269,6 +271,8 @@ class ChatWindow:
             config.port,
             config.ca_file,
             config.timeout,
+            config.backup_hosts,
+            config.web_port,
         )
         self.events: queue.Queue[tuple[str, Any, Exception | None]] = queue.Queue()
         self.history_pending = False
@@ -279,6 +283,11 @@ class ChatWindow:
         self.history_generation = 0
         self.image_marks: set[str] = set()
         self.image_refs: list[Any] = []
+        self.advertisement_listener: MulticastAdvertisementListener | None = None
+        self.advertisement_image_ref: Any = None
+        self.advertisement_frames: list[tuple[Any, int]] = []
+        self.advertisement_frame_index = 0
+        self.advertisement_animation_after_id: str | None = None
         self.closed = False
 
         root.title("Chat | Cliente Python")
@@ -290,6 +299,10 @@ class ChatWindow:
             pass
 
         self._build_interface()
+        self.advertisement_listener = MulticastAdvertisementListener(
+            config.multicast_group, config.multicast_port, self._on_advertisement
+        )
+        self.advertisement_listener.start()
         self.root.after(100, self._process_events)
         self.root.after(500, self._refresh_history)
         self.root.after(config.history_interval * 1000, self._schedule_refresh)
@@ -312,7 +325,7 @@ class ChatWindow:
         # A linha do histórico recebe todo o espaço variável.
         # A área de composição permanece reservada na parte inferior.
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(2, weight=1)
+        outer.rowconfigure(3, weight=1)
 
         # Cabeçalho
         header = ttk.Frame(outer)
@@ -391,6 +404,19 @@ class ChatWindow:
             pady=(3, 0),
         )
 
+        # Area exclusiva para publicidade sincronizada por multicast.
+        advertisement_frame = ttk.LabelFrame(outer, text="Publicidade", padding=6)
+        advertisement_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self.advertisement_label = ttk.Label(
+            advertisement_frame,
+            text="Aguardando anuncio multicast...",
+            anchor=tk.CENTER,
+            justify=tk.CENTER,
+        )
+        self.advertisement_label.pack(fill=tk.X, expand=True)
+        advertisement_frame.configure(height=100)
+        advertisement_frame.pack_propagate(False)
+
         # Histórico: ocupa somente a área flexível.
         history_frame = ttk.LabelFrame(
             outer,
@@ -398,7 +424,7 @@ class ChatWindow:
             padding=8,
         )
         history_frame.grid(
-            row=2,
+            row=3,
             column=0,
             sticky="nsew",
             pady=(0, 8),
@@ -435,7 +461,7 @@ class ChatWindow:
             text="Nova mensagem",
             padding=8,
         )
-        composer.grid(row=3, column=0, sticky="ew")
+        composer.grid(row=4, column=0, sticky="ew")
 
         composer_row = ttk.Frame(composer)
         composer_row.pack(fill=tk.X)
@@ -504,7 +530,7 @@ class ChatWindow:
             textvariable=self.status_var,
             style="Subtle.TLabel",
         ).grid(
-            row=4,
+            row=5,
             column=0,
             sticky=tk.W,
             pady=(8, 0),
@@ -541,6 +567,66 @@ class ChatWindow:
         self.message_entry.focus_set()
         popup.destroy()
 
+    def _on_advertisement(self, filename: str) -> None:
+        if self.closed:
+            return
+        self._run_background(
+            "advertisement",
+            lambda: (filename, self.transport.fetch_image(f"/publicidade/{filename}")),
+            (filename, None),
+        )
+
+    def _display_advertisement(self, filename: str, image_data: bytes | None) -> None:
+        if self.advertisement_animation_after_id is not None:
+            try:
+                self.root.after_cancel(self.advertisement_animation_after_id)
+            except tk.TclError:
+                pass
+            self.advertisement_animation_after_id = None
+
+        self.advertisement_frames.clear()
+        self.advertisement_frame_index = 0
+
+        if image_data is None or Image is None or ImageTk is None:
+            self.advertisement_label.configure(
+                text=f"Publicidade recebida: {filename}", image=""
+            )
+            return
+
+        try:
+            with Image.open(io.BytesIO(image_data)) as source_image:
+                is_gif = source_image.format == "GIF" and ImageSequence is not None
+                frames = ImageSequence.Iterator(source_image) if is_gif else [source_image]
+
+                for source_frame in frames:
+                    rendered = source_frame.convert("RGBA")
+                    rendered.thumbnail((820, 82), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(rendered, master=self.root)
+                    duration = max(50, min(2000, int(source_frame.info.get("duration", 120))))
+                    self.advertisement_frames.append((photo, duration))
+
+            if not self.advertisement_frames:
+                raise ValueError("A imagem de publicidade nao possui quadros validos.")
+
+            self._show_advertisement_frame()
+        except Exception as error:
+            self.advertisement_label.configure(text=f"Publicidade: {filename}", image="")
+            self.status_var.set(f"Nao foi possivel exibir a publicidade: {error}")
+
+    def _show_advertisement_frame(self) -> None:
+        if self.closed or not self.advertisement_frames:
+            return
+        photo, duration = self.advertisement_frames[self.advertisement_frame_index]
+        self.advertisement_image_ref = photo
+        self.advertisement_label.configure(image=photo, text="")
+        self.advertisement_frame_index = (
+            self.advertisement_frame_index + 1
+        ) % len(self.advertisement_frames)
+        if len(self.advertisement_frames) > 1:
+            self.advertisement_animation_after_id = self.root.after(
+                duration, self._show_advertisement_frame
+            )
+
     def _load_stickers(self) -> None:
         if self.closed or self.stickers_pending:
             return
@@ -549,7 +635,7 @@ class ChatWindow:
         self.status_var.set("Consultando as figurinhas disponíveis no middleware...")
         self._run_background(
             "stickers",
-            lambda: self.transport.fetch_stickers(self.config.web_base_url),
+            lambda: self.transport.fetch_stickers(),
             [],
         )
 
@@ -640,7 +726,7 @@ class ChatWindow:
             mark,
             generation,
             alt,
-            self.transport.fetch_image(source, self.config.web_base_url),
+            self.transport.fetch_image(source),
         )
         self._run_background("image", operation, fallback)
 
@@ -849,6 +935,11 @@ class ChatWindow:
                 self._show_sticker_picker(result or [])
                 self.status_var.set("Catálogo de figurinhas carregado.")
 
+            elif action == "advertisement":
+                if error is None and result:
+                    filename, image_data = result
+                    self._display_advertisement(filename, image_data)
+
             elif action == "image":
                 mark, generation, alt, image_data = result
                 self._finish_image(mark, generation, alt, image_data, error)
@@ -857,4 +948,12 @@ class ChatWindow:
 
     def _close(self) -> None:
         self.closed = True
+        if self.advertisement_animation_after_id is not None:
+            try:
+                self.root.after_cancel(self.advertisement_animation_after_id)
+            except tk.TclError:
+                pass
+            self.advertisement_animation_after_id = None
+        if self.advertisement_listener is not None:
+            self.advertisement_listener.close()
         self.root.destroy()

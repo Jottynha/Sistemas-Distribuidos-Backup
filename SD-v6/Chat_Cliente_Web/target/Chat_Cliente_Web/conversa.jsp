@@ -1,4 +1,5 @@
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
+<%@ include file="/WEB-INF/jspf/middleware-config.jspf" %>
 <%
     String nickname = (String) session.getAttribute("Nickname");
     String cor = (String) session.getAttribute("Cor");
@@ -6,9 +7,6 @@
     if (nickname == null) { response.sendRedirect("index.jsp"); return; }
     if (!"Navy".equals(cor) && !"Tomato".equals(cor) && !"MediumSeaGreen".equals(cor)) cor = "Navy";
     if (avatar == null || !avatar.matches("[a-zA-Z0-9._-]+\\.(png|gif|jpg|jpeg|webp)") || avatar.contains("..")) avatar = "menino.png";
-    String baseUrl = application.getInitParameter("middleware.publicBaseUrl");
-    if (baseUrl == null || baseUrl.isBlank()) baseUrl = "http://127.0.0.1:8081";
-    baseUrl = baseUrl.replaceAll("/+$", "");
     String nicknameSeguro = nickname.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
 %>
 <!DOCTYPE html>
@@ -54,11 +52,11 @@
     </style>
 </head>
 <body>
+    <div id="middlewareConfig" hidden data-primary="<%= middlewarePrimarySafe %>" data-backup="<%= middlewareBackupSafe %>" data-failover-wait="<%= failoverWaitMs %>"></div>
     <main class="composer" id="FrmConversa"
           data-nickname="<%= nicknameSeguro %>"
           data-cor="<%= cor %>"
-          data-avatar="<%= avatar %>"
-          data-middleware="<%= baseUrl %>">
+          data-avatar="<%= avatar %>">
         <div class="composer-top">
             <div class="composer-title">Sua mensagem</div>
             <div class="composer-subtitle">Emojis e figurinhas são compartilhados com o cliente Desktop</div>
@@ -88,9 +86,10 @@
         <p id="StatusEnvio" role="status"></p>
     </main>
 
+    <script src="<%= request.getContextPath() %>/js/middleware-client.js"></script>
     <script>
         const composer = document.getElementById("FrmConversa");
-        const middleware = composer.dataset.middleware;
+        const middlewareClient = window.createMiddlewareClient(document.getElementById("middlewareConfig"));
         const nickname = composer.dataset.nickname;
         const cor = composer.dataset.cor;
         const avatar = composer.dataset.avatar;
@@ -110,7 +109,7 @@
         }
 
         function urlFigurinha(nome) {
-            return middleware + "/figurinhas/" + encodeURIComponent(nome);
+            return middlewareClient.base() + "/figurinhas/" + encodeURIComponent(nome);
         }
 
         function selecionarFigurinha(nome, botao) {
@@ -138,9 +137,11 @@
 
         async function carregarFigurinhas() {
             try {
-                const resposta = await fetch(middleware + "/api/stickers", { cache: "no-store" });
+                const resposta = await middlewareClient.fetch("/api/stickers", { method: "GET" });
                 if (!resposta.ok) throw new Error("HTTP " + resposta.status);
-                const nomes = (await resposta.text()).split(/\r?\n/).map(n => n.trim())
+                const catalogo = await resposta.json();
+                if (!Array.isArray(catalogo)) throw new Error("Catalogo de figurinhas invalido.");
+                const nomes = catalogo.filter(n => typeof n === "string").map(n => n.trim())
                         .filter(n => /^[a-zA-Z0-9._-]+\.(png|gif|jpg|jpeg|webp)$/i.test(n))
                         .filter(n => !n.includes(".."));
                 stickerGallery.replaceChildren();
@@ -181,7 +182,7 @@
 
         async function carregarEmojis() {
             try {
-                const resposta = await fetch(middleware + "/api/emojis", { cache: "no-store" });
+                const resposta = await middlewareClient.fetch("/api/emojis", { method: "GET" });
                 if (!resposta.ok) throw new Error("HTTP " + resposta.status);
                 const emojis = (await resposta.text()).split(/\r?\n/).map(e => e.trim()).filter(Boolean);
                 emojiGallery.replaceChildren();
@@ -247,7 +248,7 @@
             };
 
             try {
-                const resposta = await fetch(middleware + "/api/messages", {
+                const resposta = await middlewareClient.fetch("/api/messages", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json; charset=UTF-8"

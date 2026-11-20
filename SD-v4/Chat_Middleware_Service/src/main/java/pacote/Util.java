@@ -3,9 +3,12 @@ package pacote;
 import protocolo.ChatMessage;
 import protocolo.JsonProtocol;
 import pacote.database.MensagemDAO;
+import pacote.database.MensagemArmazenada;
 import pacote.replication.ReplicacaoConfig;
 import pacote.replication.ReplicacaoClient;
 import pacote.replication.ReplicacaoRecepcaoThread;
+import pacote.replication.ReplicacaoHeartbeatMonitor;
+import pacote.advertising.PublicidadeMulticastService;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -86,6 +89,10 @@ public class Util {
     public static final Path DiretorioFigurinhas =
             DiretorioBase.resolve("figurinhas");
 
+    /** Pasta publica de imagens/GIFs usadas pela publicidade multicast. */
+    public static final Path DiretorioPublicidade =
+            DiretorioBase.resolve("publicidade");
+
     /**
      * Caminho legado mantido apenas para compatibilidade com codigo antigo.
      * O historico atual e armazenado exclusivamente no MySQL.
@@ -118,6 +125,10 @@ public class Util {
     private static final MensagemDAO mensagemDAO = new MensagemDAO();
 
     private static volatile boolean repositorioInicializado = false;
+    private static volatile boolean atendimentoAtivo = false;
+    // Ativa a protecao de gravacao mesmo quando o processo B nao replica de volta.
+    private static volatile boolean controleAltaDisponibilidade = false;
+    private static PublicidadeMulticastService servicoPublicidade;
 
     // =========================================================
     // 5. SERVIDOR HTTPS
@@ -277,6 +288,7 @@ public class Util {
         Files.createDirectories(DiretorioLogs);
         Files.createDirectories(DiretorioFigurinhas);
         Files.createDirectories(DiretorioFigurinhas.resolve("avatars"));
+        Files.createDirectories(DiretorioPublicidade);
 
         System.out.println(
                 "========== DIRETORIOS DO MIDDLEWARE =========="
@@ -285,6 +297,7 @@ public class Util {
         System.out.println("Dados: " + DiretorioDados);
         System.out.println("Logs: " + DiretorioLogs);
         System.out.println("Figurinhas: " + DiretorioFigurinhas);
+        System.out.println("Publicidade: " + DiretorioPublicidade);
         System.out.println("Repositorio de mensagens: MySQL (banco configurado por CHAT_DB_NAME)");
         System.out.println(
                 "=============================================="
@@ -310,9 +323,13 @@ public class Util {
      * Persiste a mensagem estruturada e o HTML renderizado no MySQL.
      * O ACK so deve ser enviado pelo chamador depois que este metodo retornar.
      */
-    public static void registrarMensagem(
+    public static synchronized void registrarMensagem(
             ChatMessage mensagem,
             String mensagemHtml) throws IOException {
+
+        if ((controleAltaDisponibilidade || ReplicacaoConfig.habilitada()) && !atendimentoAtivo) {
+            throw new IOException("Este middleware esta em standby ou perdeu o lease do reserva; a mensagem nao foi aceita.");
+        }
 
         inicializarRepositorio();
 
@@ -357,7 +374,7 @@ public class Util {
      * Este caminho nao inicia uma nova replicacao, evitando ciclos A -> B -> A.
      * O retorno informa se a linha foi inserida ou se ja existia de forma identica.
      */
-    public static boolean registrarMensagemReplicada(
+    public static synchronized boolean registrarMensagemReplicada(
             ChatMessage mensagem,
             String mensagemHtml) throws IOException {
 
@@ -384,6 +401,49 @@ public class Util {
         }
     }
 
+    /** Retorna uma pagina dos registros completos usada pela sincronizacao A/B. */
+    public static synchronized List<MensagemArmazenada> listarMensagensParaReplicacao(
+            int offset, int limite) throws IOException {
+        inicializarRepositorio();
+        try {
+            return mensagemDAO.listarMensagensParaReplicacao(offset, limite);
+        } catch (SQLException erro) {
+            registrarErroServidor(
+                    "internal", "MYSQL/REPLICACAO", "N/A",
+                    "Util.listarMensagensParaReplicacao", erro
+            );
+            throw new IOException("Nao foi possivel listar mensagens para sincronizacao.", erro);
+        }
+    }
+
+    /** Calcula quantidade e SHA-256 dos registros persistidos. */
+    public static synchronized MensagemDAO.ResumoMensagens obterResumoMensagens()
+            throws IOException {
+        inicializarRepositorio();
+        try {
+            return mensagemDAO.calcularResumoMensagens();
+        } catch (SQLException erro) {
+            registrarErroServidor(
+                    "internal", "MYSQL/REPLICACAO", "N/A",
+                    "Util.obterResumoMensagens", erro
+            );
+            throw new IOException("Nao foi possivel verificar a consistencia do banco.", erro);
+        }
+    }
+
+    /** Conta registros sem calcular o resumo completo; usado na paginacao. */
+    public static synchronized long contarMensagensPersistidas() throws IOException {
+        inicializarRepositorio();
+        try {
+            return mensagemDAO.contarMensagens();
+        } catch (SQLException erro) {
+            registrarErroServidor(
+                    "internal", "MYSQL/REPLICACAO", "N/A",
+                    "Util.contarMensagensPersistidas", erro
+            );
+            throw new IOException("Nao foi possivel contar mensagens para sincronizacao.", erro);
+        }
+    }
     /**
      * Compatibilidade temporaria com chamadas antigas que fornecem apenas
      * HTML. Mesmo nesse caso, o registro e gravado no MySQL, nunca no TXT.
@@ -485,6 +545,7 @@ public class Util {
     /** Inicia somente o listener interno de replicacao do middleware reserva. */
     public static synchronized void iniciarRecepcaoReplicacao() throws IOException {
         inicializarRepositorio();
+        controleAltaDisponibilidade = true;
         if (receptorReplicacao != null) {
             return;
         }
@@ -662,6 +723,11 @@ public class Util {
         servidor.createContext(
                 "/figurinhas/",
                 Util::servirFigurinha
+        );
+
+        servidor.createContext(
+                "/publicidade/",
+                Util::servirPublicidade
         );
 
         servidor.createContext(
@@ -1442,6 +1508,54 @@ public class Util {
         }
     }
 
+    /** Serve somente arquivos de imagem da pasta publica de publicidade. */
+    private static void servirPublicidade(HttpExchange troca) throws IOException {
+        if (!"GET".equalsIgnoreCase(troca.getRequestMethod())) {
+            responder(troca, 405, "Metodo nao permitido", "text/plain; charset=UTF-8");
+            return;
+        }
+        try {
+            String caminho = troca.getRequestURI().getRawPath()
+                    .substring("/publicidade/".length());
+            caminho = java.net.URLDecoder.decode(caminho, StandardCharsets.UTF_8);
+            if (caminho.contains("/") || caminho.contains("\\") || caminho.contains("..")) {
+                responder(troca, 400, "Nome de arquivo invalido", "text/plain; charset=UTF-8");
+                return;
+            }
+            Path raiz = DiretorioPublicidade.toRealPath();
+            Path arquivo = raiz.resolve(caminho).normalize();
+            if (!arquivo.startsWith(raiz) || !Files.isRegularFile(arquivo) || !ehArquivoImagem(arquivo.getFileName().toString())) {
+                responder(troca, 404, "Publicidade nao encontrada", "text/plain; charset=UTF-8");
+                return;
+            }
+            arquivo = arquivo.toRealPath();
+            if (!arquivo.startsWith(raiz)) {
+                responder(troca, 404, "Publicidade nao encontrada", "text/plain; charset=UTF-8");
+                return;
+            }
+            String extensao = arquivo.getFileName().toString().toLowerCase(Locale.ROOT);
+            String tipo = switch (extensao.substring(extensao.lastIndexOf('.') + 1)) {
+                case "png" -> "image/png";
+                case "gif" -> "image/gif";
+                case "jpg", "jpeg" -> "image/jpeg";
+                case "webp" -> "image/webp";
+                default -> "application/octet-stream";
+            };
+            byte[] dados = Files.readAllBytes(arquivo);
+            troca.getResponseHeaders().set("Content-Type", tipo);
+            troca.getResponseHeaders().set("Cache-Control", "no-cache, no-store, must-revalidate");
+            troca.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
+            troca.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            troca.sendResponseHeaders(200, dados.length);
+            try (var saida = troca.getResponseBody()) { saida.write(dados); }
+        } catch (java.nio.file.NoSuchFileException erro) {
+            responder(troca, 404, "Publicidade nao encontrada", "text/plain; charset=UTF-8");
+        } catch (Exception erro) {
+            registrarErroServidor("web", "INTERNO/HTTPS", ipRemoto(troca), "Util.servirPublicidade", erro);
+            responder(troca, 500, "Erro ao carregar publicidade", "text/plain; charset=UTF-8");
+        }
+    }
+
     // =========================================================
     // 16. COLETOR DE LOGS HTTPS
     // =========================================================
@@ -1766,8 +1880,80 @@ public class Util {
     // 19. ENCERRAMENTO GERAL
     // =========================================================
 
-    public static synchronized void pararTodosServicos() {
+    /** Inicia os servicos de atendimento e publicidade no middleware que possui o papel ACTIVE. */
+    public static synchronized void iniciarServicosDeAtendimento() throws IOException {
+        if (atendimentoAtivo) return;
+        inicializarRepositorio();
+        atendimentoAtivo = true;
+        try {
+            iniciarDesktop();
+            iniciarServicoTerceiros();
+            iniciarServidorWeb();
+            iniciarColetorLogs();
+            try {
+                iniciarPublicidadeMulticast();
+            } catch (IOException | RuntimeException erroPublicidade) {
+                // Multicast depende da rede local. Uma limitacao do hotspot
+                // nao pode impedir o chat nem a promocao do middleware reserva.
+                registrarErroServidor(
+                        "internal",
+                        "PUBLICIDADE_MULTICAST",
+                        "N/A",
+                        "Util.iniciarServicosDeAtendimento",
+                        erroPublicidade
+                );
+                System.err.println(
+                        "Aviso: publicidade multicast indisponivel nesta interface; "
+                        + "o chat continuara ativo. Detalhe: " + erroPublicidade.getMessage()
+                );
+            }
+            System.out.println("Middleware ACTIVE: Desktop, Python e HTTPS habilitados; publicidade multicast verificada.");
+        } catch (Exception erro) {
+            atendimentoAtivo = false;
+            pararServicosDeAtendimento();
+            if (erro instanceof IOException io) throw io;
+            throw new IOException("Nao foi possivel iniciar todos os servicos de atendimento.", erro);
+        }
+    }
 
+    /** Para os listeners de clientes, mas preserva o monitor/receiver de failover. */
+    public static synchronized void rebaixarParaReserva() {
+        atendimentoAtivo = false;
+        pararPublicidadeMulticast();
+        pararServicoTerceiros();
+        pararColetorLogs();
+        pararServidorWeb();
+        pararDesktop();
+        System.out.println("Middleware em STANDBY: servicos de clientes interrompidos.");
+    }
+
+    public static synchronized void pararServicosDeAtendimento() {
+        rebaixarParaReserva();
+    }
+
+    public static boolean atendimentoAtivo() {
+        return atendimentoAtivo;
+    }
+
+    public static synchronized void iniciarPublicidadeMulticast() throws IOException {
+        if (servicoPublicidade != null && servicoPublicidade.isRunning()) return;
+        Files.createDirectories(DiretorioPublicidade);
+        PublicidadeMulticastService novo = new PublicidadeMulticastService(DiretorioPublicidade);
+        novo.iniciar();
+        servicoPublicidade = novo;
+    }
+
+    public static synchronized void pararPublicidadeMulticast() {
+        if (servicoPublicidade != null) {
+            servicoPublicidade.fechar();
+            servicoPublicidade = null;
+        }
+    }
+
+    public static synchronized void pararTodosServicos() {
+        atendimentoAtivo = false;
+        ReplicacaoHeartbeatMonitor.parar();
+        pararPublicidadeMulticast();
         pararRecepcaoReplicacao();
         pararServicoTerceiros();
         pararColetorLogs();

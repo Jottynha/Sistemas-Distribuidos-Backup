@@ -46,3 +46,5 @@
 
 2026-11-19 17:38:37 | TesteHTTPS | 127.0.0.1 | TesteManual | Log enviado por HTTPS
 
+2026-11-20 16:27:16 | Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 | 127.0.0.1 | mensagem.jsp:atualizarConversa | Nenhum middleware confirmou a requisicao durante o failover. Failed to fetch
+
