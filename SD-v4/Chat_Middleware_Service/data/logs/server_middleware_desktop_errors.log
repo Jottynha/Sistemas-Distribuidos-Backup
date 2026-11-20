@@ -98,3 +98,9 @@
 
 2026-11-19 18:38:15 | desktop | TERCEIROS | NÃO APLICÁVEL | TerceirosJsonRecepcaoThread.atenderCliente / IP: 127.0.0.1 | SocketException: Uma conexão estabelecida foi anulada pelo software no computador host
 
+2026-11-20 15:02:11 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+
+2026-11-20 15:02:16 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+
+2026-11-20 15:02:22 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+

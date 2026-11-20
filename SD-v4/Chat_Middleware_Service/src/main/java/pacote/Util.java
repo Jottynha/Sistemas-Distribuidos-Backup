@@ -2,6 +2,10 @@ package pacote;
 
 import protocolo.ChatMessage;
 import protocolo.JsonProtocol;
+import pacote.database.MensagemDAO;
+import pacote.replication.ReplicacaoConfig;
+import pacote.replication.ReplicacaoClient;
+import pacote.replication.ReplicacaoRecepcaoThread;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -12,13 +16,10 @@ import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 
 import java.security.GeneralSecurityException;
@@ -27,8 +28,10 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-import java.util.ArrayList;
+import java.sql.SQLException;
+
 import java.util.List;
+import java.util.UUID;
 import java.util.Locale;
 import java.util.Map;
 
@@ -36,8 +39,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -85,10 +86,13 @@ public class Util {
     public static final Path DiretorioFigurinhas =
             DiretorioBase.resolve("figurinhas");
 
+    /**
+     * Caminho legado mantido apenas para compatibilidade com codigo antigo.
+     * O historico atual e armazenado exclusivamente no MySQL.
+     */
+    @Deprecated
     public static final String PathRepDesktop =
-            DiretorioDados.resolve(
-                    "RepositorioDesktop.txt"
-            ).toString();
+            DiretorioDados.resolve("RepositorioDesktop.txt").toString();
 
     // =========================================================
     // 3. CONTROLE DOS SERVICOS DESKTOP
@@ -101,17 +105,19 @@ public class Util {
 
     public static DesktopJsonRecepcaoThread desktopJsonRecepcaoThread;
 
+    private static ReplicacaoRecepcaoThread receptorReplicacao;
+
+    // Listener do cliente Python/outras linguagens (porta 6665).
+    // Gerenciado aqui para funcionar tanto no painel quanto no modo headless.
+    private static TerceirosJsonRecepcaoThread servidorTerceirosHeadless;
+
     // =========================================================
-    // 4. HISTORICO COMPARTILHADO
+    // 4. HISTORICO COMPARTILHADO - MYSQL
     // =========================================================
 
-    private static final List<String> historicoMensagens =
-            new ArrayList<>();
+    private static final MensagemDAO mensagemDAO = new MensagemDAO();
 
-    private static final ReentrantReadWriteLock travaHistorico =
-            new ReentrantReadWriteLock(true);
-
-    private static boolean historicoInicializado = false;
+    private static volatile boolean repositorioInicializado = false;
 
     // =========================================================
     // 5. SERVIDOR HTTPS
@@ -216,219 +222,231 @@ public class Util {
         }
     }
 
+    /**
+     * Localiza a CA publica utilizada para validar o certificado do middleware
+     * reserva. Pode ser sobrescrita por CHAT_REPLICATION_CA_FILE.
+     */
+    public static Path localizarCertificadoRaizPublico() throws IOException {
+        String configurado = System.getenv("CHAT_REPLICATION_CA_FILE");
+        if (configurado != null && !configurado.isBlank()) {
+            Path caminho = Path.of(configurado.trim()).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(caminho)) {
+                throw new IOException("CHAT_REPLICATION_CA_FILE nao aponta para um arquivo: " + caminho);
+            }
+            return caminho;
+        }
+
+        Path[] candidatos = new Path[]{
+            // Preferir a CA publica versionada, igual a usada pelos clientes.
+            DiretorioBase.getParent() == null
+                    ? DiretorioBase.resolve("certificados/chat-root-ca.cer")
+                    : DiretorioBase.getParent().resolve("certificados/chat-root-ca.cer"),
+            DiretorioBase.resolve("certificados/chat-root-ca.cer"),
+            DiretorioDados.resolve("certificados/chat-root-ca.cer")
+        };
+
+        for (Path candidato : candidatos) {
+            if (Files.isRegularFile(candidato)) {
+                return candidato.toAbsolutePath().normalize();
+            }
+        }
+
+        throw new IOException(
+                "Certificado raiz publico nao encontrado. Configure CHAT_REPLICATION_CA_FILE "
+                + "ou disponibilize SD-v4/certificados/chat-root-ca.cer."
+        );
+    }
+
     // =========================================================
-    // 8. HISTORICO EM RAM E TXT
+    // 8. REPOSITORIO PERSISTENTE MYSQL
     // =========================================================
 
+    /**
+     * Inicializa os diretorios auxiliares e valida o acesso ao MySQL.
+     * O banco passa a ser a fonte oficial do historico; nenhum TXT e
+     * criado, lido ou atualizado para armazenar conversas.
+     */
     public static synchronized void inicializarRepositorio()
             throws IOException {
 
-        if (historicoInicializado) {
+        if (repositorioInicializado) {
             return;
         }
 
         Files.createDirectories(DiretorioDados);
         Files.createDirectories(DiretorioLogs);
         Files.createDirectories(DiretorioFigurinhas);
-
-        Files.createDirectories(
-                DiretorioFigurinhas.resolve("avatars")
-        );
+        Files.createDirectories(DiretorioFigurinhas.resolve("avatars"));
 
         System.out.println(
                 "========== DIRETORIOS DO MIDDLEWARE =========="
         );
-
         System.out.println("Base: " + DiretorioBase);
         System.out.println("Dados: " + DiretorioDados);
         System.out.println("Logs: " + DiretorioLogs);
         System.out.println("Figurinhas: " + DiretorioFigurinhas);
-        System.out.println("Historico: " + PathRepDesktop);
-
+        System.out.println("Repositorio de mensagens: MySQL (banco configurado por CHAT_DB_NAME)");
         System.out.println(
                 "=============================================="
         );
 
-        Path arquivoHistorico = Path.of(PathRepDesktop);
+        try {
+            long total = mensagemDAO.contarMensagens();
+            repositorioInicializado = true;
 
-        Path arquivoAntigo = DiretorioBase.resolve(
-                Path.of("C_", "Dados", "RepositorioDesktop.txt")
-        );
-
-        // Migra o historico antigo sem apagar o original.
-        if (Files.notExists(arquivoHistorico)
-                && Files.isRegularFile(arquivoAntigo)) {
-
-            Files.copy(
-                    arquivoAntigo,
-                    arquivoHistorico,
-                    StandardCopyOption.COPY_ATTRIBUTES
+            System.out.println(
+                    "MySQL conectado. Mensagens persistidas: " + total
+            );
+        } catch (SQLException erro) {
+            throw new IOException(
+                    "Nao foi possivel inicializar o repositorio MySQL. "
+                    + "Verifique a configuracao e a disponibilidade do banco.",
+                    erro
             );
         }
-
-        if (Files.notExists(arquivoHistorico)) {
-            Files.createFile(arquivoHistorico);
-        }
-
-        List<String> linhas = Files.readAllLines(
-                arquivoHistorico,
-                StandardCharsets.UTF_8
-        );
-
-        travaHistorico.writeLock().lock();
-
-        try {
-
-            historicoMensagens.clear();
-
-            for (String linha : linhas) {
-
-                if (linha != null && !linha.isBlank()) {
-                    historicoMensagens.add(linha);
-                }
-            }
-
-            historicoInicializado = true;
-
-        } finally {
-            travaHistorico.writeLock().unlock();
-        }
-
-        System.out.println(
-                "Historico carregado: "
-                + historicoMensagens.size()
-                + " mensagem(ns)."
-        );
     }
 
     /**
-     * Grava primeiro no TXT e depois atualiza a RAM.
+     * Persiste a mensagem estruturada e o HTML renderizado no MySQL.
+     * O ACK so deve ser enviado pelo chamador depois que este metodo retornar.
      */
-    public static void adicionarMensagem(String mensagem)
-            throws IOException {
+    public static void registrarMensagem(
+            ChatMessage mensagem,
+            String mensagemHtml) throws IOException {
 
         inicializarRepositorio();
 
-        if (mensagem == null || mensagem.isBlank()) {
+        if (mensagem == null) {
+            throw new IllegalArgumentException(
+                    "A mensagem nao pode ser nula."
+            );
+        }
 
+        if (mensagemHtml == null || mensagemHtml.isBlank()) {
+            throw new IllegalArgumentException(
+                    "O HTML renderizado da mensagem nao pode ficar vazio."
+            );
+        }
+
+        try {
+            // O ID original e preservado nos dois bancos. A operacao e
+            // idempotente para permitir repeticao caso a confirmacao TLS se perca.
+            mensagemDAO.salvarSeAusente(mensagem, mensagemHtml);
+
+            if (ReplicacaoConfig.habilitada()) {
+                ReplicacaoConfig configuracao = ReplicacaoConfig.carregarCliente();
+                ReplicacaoClient.replicar(mensagem, mensagemHtml, configuracao);
+            }
+        } catch (Exception erro) {
+            registrarErroServidor(
+                    "internal",
+                    "MYSQL/REPLICACAO",
+                    "N/A",
+                    "Util.registrarMensagem",
+                    erro
+            );
+            throw new IOException(
+                    "Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.",
+                    erro
+            );
+        }
+    }
+
+    /**
+     * Persiste uma mensagem recebida do middleware principal no Banco B.
+     * Este caminho nao inicia uma nova replicacao, evitando ciclos A -> B -> A.
+     * O retorno informa se a linha foi inserida ou se ja existia de forma identica.
+     */
+    public static boolean registrarMensagemReplicada(
+            ChatMessage mensagem,
+            String mensagemHtml) throws IOException {
+
+        inicializarRepositorio();
+
+        if (mensagem == null) {
+            throw new IllegalArgumentException("A mensagem replicada nao pode ser nula.");
+        }
+        if (mensagemHtml == null || mensagemHtml.isBlank()) {
+            throw new IllegalArgumentException("O HTML da mensagem replicada nao pode ficar vazio.");
+        }
+
+        try {
+            return mensagemDAO.salvarSeAusente(mensagem, mensagemHtml);
+        } catch (SQLException erro) {
+            registrarErroServidor(
+                    "internal",
+                    "MYSQL/REPLICACAO",
+                    "N/A",
+                    "Util.registrarMensagemReplicada",
+                    erro
+            );
+            throw new IOException("Nao foi possivel persistir a mensagem no Banco B.", erro);
+        }
+    }
+
+    /**
+     * Compatibilidade temporaria com chamadas antigas que fornecem apenas
+     * HTML. Mesmo nesse caso, o registro e gravado no MySQL, nunca no TXT.
+     * Os fluxos JSON atuais devem utilizar registrarMensagem(ChatMessage, html).
+     */
+    @Deprecated
+    public static void adicionarMensagem(String mensagem)
+            throws IOException {
+
+        if (mensagem == null || mensagem.isBlank()) {
             throw new IllegalArgumentException(
                     "A mensagem nao pode ser vazia."
             );
         }
 
-        String conteudo = mensagem
+        String html = mensagem
                 .replace("\r\n", "<br>")
                 .replace('\r', '\n')
                 .replace("\n", "<br>");
 
-        byte[] bytes = (
-                conteudo + System.lineSeparator()
-        ).getBytes(StandardCharsets.UTF_8);
+        ChatMessage mensagemLegada = new ChatMessage(
+                ChatMessage.CURRENT_VERSION,
+                UUID.randomUUID().toString(),
+                null,
+                ChatMessage.Type.SEND_MESSAGE,
+                "legacy",
+                "",
+                mensagem,
+                "", "", "", "",
+                Instant.now().toString(),
+                Map.of("source", "legacy-html")
+        );
 
-        travaHistorico.writeLock().lock();
-
-        try {
-
-            Path arquivo = Path.of(PathRepDesktop);
-
-            try (FileChannel canal = FileChannel.open(
-                    arquivo,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.READ,
-                    StandardOpenOption.WRITE)) {
-
-                long tamanhoOriginal = canal.size();
-
-                try {
-
-                    // Corrige arquivos antigos sem quebra de linha final.
-                    if (tamanhoOriginal > 0) {
-
-                        ByteBuffer ultimoByte =
-                                ByteBuffer.allocate(1);
-
-                        canal.position(tamanhoOriginal - 1);
-                        canal.read(ultimoByte);
-
-                        byte ultimo = ultimoByte.array()[0];
-
-                        if (ultimo != '\n' && ultimo != '\r') {
-
-                            canal.position(tamanhoOriginal);
-
-                            escreverTudo(
-                                    canal,
-                                    ByteBuffer.wrap(
-                                            System.lineSeparator()
-                                                    .getBytes(StandardCharsets.UTF_8)
-                                    )
-                            );
-                        }
-                    }
-
-                    canal.position(canal.size());
-
-                    escreverTudo(
-                            canal,
-                            ByteBuffer.wrap(bytes)
-                    );
-
-                    canal.force(true);
-
-                } catch (IOException erro) {
-
-                    // Tenta desfazer uma gravacao incompleta.
-                    try {
-
-                        canal.truncate(tamanhoOriginal);
-                        canal.force(true);
-
-                    } catch (IOException erroRollback) {
-
-                        erro.addSuppressed(erroRollback);
-                    }
-
-                    throw erro;
-                }
-            }
-
-            // Atualiza a memoria somente apos a persistencia.
-            historicoMensagens.add(conteudo);
-
-        } finally {
-            travaHistorico.writeLock().unlock();
-        }
-    }
-
-    private static void escreverTudo(
-            FileChannel canal,
-            ByteBuffer buffer) throws IOException {
-
-        while (buffer.hasRemaining()) {
-            canal.write(buffer);
-        }
+        registrarMensagem(mensagemLegada, html);
     }
 
     /**
-     * Retorna uma copia do historico em memoria.
+     * Consulta as mensagens persistidas e retorna o HTML na ordem cronologica.
      */
     public static List<String> obterHistorico()
             throws IOException {
 
         inicializarRepositorio();
 
-        travaHistorico.readLock().lock();
-
         try {
-            return List.copyOf(historicoMensagens);
-
-        } finally {
-            travaHistorico.readLock().unlock();
+            return mensagemDAO.buscarHistoricoHtml();
+        } catch (SQLException erro) {
+            registrarErroServidor(
+                    "internal",
+                    "MYSQL",
+                    "N/A",
+                    "Util.obterHistorico",
+                    erro
+            );
+            throw new IOException(
+                    "Nao foi possivel consultar o historico no MySQL.",
+                    erro
+            );
         }
     }
 
     /**
-     * Mantem o formato HTML utilizado pelo Desktop.
+     * Mantem o formato HTML utilizado pelos clientes existentes.
      */
     public static String obterHistoricoHtml()
             throws IOException {
@@ -462,6 +480,48 @@ public class Util {
                 "Servico Desktop seguro configurado na porta "
                 + PortaRecepcaoJsonTLS
         );
+    }
+
+    /** Inicia somente o listener interno de replicacao do middleware reserva. */
+    public static synchronized void iniciarRecepcaoReplicacao() throws IOException {
+        inicializarRepositorio();
+        if (receptorReplicacao != null) {
+            return;
+        }
+        ReplicacaoRecepcaoThread novo = new ReplicacaoRecepcaoThread();
+        novo.iniciar();
+        receptorReplicacao = novo;
+    }
+
+    public static synchronized void pararRecepcaoReplicacao() {
+        if (receptorReplicacao != null) {
+            receptorReplicacao.fecharServidor();
+            receptorReplicacao = null;
+        }
+    }
+
+    /**
+     * Inicia o listener TLS para o cliente Python/outras linguagens (6665).
+     * Utilizado pelo modo sem interface; o painel grafico continua controlando
+     * sua propria instancia pelo botao correspondente.
+     */
+    public static synchronized void iniciarServicoTerceiros() throws IOException {
+        if (servidorTerceirosHeadless != null
+                && servidorTerceirosHeadless.isRunning()) {
+            return;
+        }
+
+        TerceirosJsonRecepcaoThread novo = new TerceirosJsonRecepcaoThread();
+        novo.iniciar();
+        servidorTerceirosHeadless = novo;
+    }
+
+    /** Encerra o listener de clientes Python iniciado em modo headless. */
+    public static synchronized void pararServicoTerceiros() {
+        if (servidorTerceirosHeadless != null) {
+            servidorTerceirosHeadless.fecharServidor();
+            servidorTerceirosHeadless = null;
+        }
     }
 
     public static synchronized void pararDesktop() {
@@ -865,7 +925,31 @@ public class Util {
                 String mensagemHtml =
                         RenderizadorMensagemHtml.renderizar(requisicao);
 
-                adicionarMensagem(mensagemHtml);
+                try {
+                    registrarMensagem(requisicao, mensagemHtml);
+                } catch (IOException erroPersistencia) {
+                    registrarErroServidor(
+                            "web",
+                            "INTERNO/HTTPS",
+                            ipRemoto(troca),
+                            "Util.atenderMensagensWeb - persistencia MySQL",
+                            erroPersistencia
+                    );
+
+                    responder(
+                            troca,
+                            500,
+                            JsonProtocol.serializeLine(
+                                    criarErroWeb(
+                                            requisicao.id(),
+                                            "ERRO_PERSISTENCIA",
+                                            "Nao foi possivel registrar a mensagem no banco de dados."
+                                    )
+                            ),
+                            "application/json; charset=UTF-8"
+                    );
+                    return;
+                }
 
                 ChatMessage confirmacao = new ChatMessage(
 
@@ -1684,6 +1768,8 @@ public class Util {
 
     public static synchronized void pararTodosServicos() {
 
+        pararRecepcaoReplicacao();
+        pararServicoTerceiros();
         pararColetorLogs();
         pararServidorWeb();
         pararDesktop();

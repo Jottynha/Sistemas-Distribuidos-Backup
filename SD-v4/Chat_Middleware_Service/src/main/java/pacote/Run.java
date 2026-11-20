@@ -36,15 +36,14 @@ public class Run {
                 )
         );
 
-        boolean modoHeadless = Arrays.asList(args)
-                .contains("--headless");
+        boolean modoReplica = Arrays.asList(args).contains("--replica-only");
+        boolean modoHeadless = Arrays.asList(args).contains("--headless");
 
-        if (modoHeadless) {
-
+        if (modoReplica) {
+            iniciarComoReserva();
+        } else if (modoHeadless) {
             iniciarSemInterface();
-
         } else {
-
             iniciarPainel();
         }
     }
@@ -65,7 +64,34 @@ public class Run {
     }
 
     /**
-     * Inicia os tres servicos sem abrir o painel.
+     * Inicia somente o receptor interno de replicacao no middleware reserva.
+     * O processo utiliza o banco indicado pelas variaveis CHAT_DB_* e nao
+     * abre as portas destinadas aos clientes enquanto estiver em standby.
+     */
+    private static void iniciarComoReserva() {
+        try {
+            Util.iniciarRecepcaoReplicacao();
+            System.out.println(
+                    "Middleware reserva em modo de replicacao. Aguardando o middleware principal."
+            );
+            aguardarEncerramento();
+        } catch (Exception erro) {
+            registrarFalha("internal", erro);
+            Util.pararTodosServicos();
+        }
+    }
+
+    private static void aguardarEncerramento() {
+        try {
+            new CountDownLatch(1).await();
+        } catch (InterruptedException erro) {
+            Thread.currentThread().interrupt();
+            Util.pararTodosServicos();
+        }
+    }
+
+    /**
+     * Inicia os servicos Desktop, Terceiros (Python), Web e logs sem abrir o painel.
      *
      * Utilizado na execucao fora do NetBeans.
      */
@@ -86,6 +112,22 @@ public class Run {
         } catch (Exception e) {
 
             registrarFalha("desktop", e);
+        }
+
+        // O modo sem interface tambem precisa disponibilizar o listener
+        // TCP/TLS 6665 utilizado pelo cliente Python.
+        try {
+
+            Util.iniciarServicoTerceiros();
+
+            System.out.println(
+                    "Servico Terceiros (Python) iniciado na porta "
+                    + TerceirosJsonRecepcaoThread.PORTA
+            );
+
+        } catch (Exception e) {
+
+            registrarFalha("terceiros", e);
         }
 
         try {
@@ -119,16 +161,7 @@ public class Run {
         );
 
         // Mantem o processo ativo ate seu encerramento.
-        try {
-
-            new CountDownLatch(1).await();
-
-        } catch (InterruptedException e) {
-
-            Thread.currentThread().interrupt();
-
-            Util.pararTodosServicos();
-        }
+        aguardarEncerramento();
     }
 
     /**

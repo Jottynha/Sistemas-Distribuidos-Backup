@@ -1,4 +1,3 @@
-
 package pacote;
 
 import protocolo.ChatMessage;
@@ -22,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 
 import java.security.GeneralSecurityException;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -64,11 +64,9 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                 receptor = servidor;
 
                 servidor.setReuseAddress(true);
-
                 servidor.setEnabledProtocols(
                         new String[]{"TLSv1.3", "TLSv1.2"}
                 );
-
                 servidor.setNeedClientAuth(false);
 
                 servidor.bind(
@@ -86,21 +84,13 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                 while (!paradaManual) {
 
                     Socket cliente = servidor.accept();
-
                     cliente.setSoTimeout(15000);
-
                     clientesAtivos.add(cliente);
 
                     try {
-
-                        executor.execute(
-                                () -> atenderCliente(cliente)
-                        );
-
+                        executor.execute(() -> atenderCliente(cliente));
                     } catch (RejectedExecutionException erro) {
-
                         clientesAtivos.remove(cliente);
-
                         fecharSocket(cliente);
                     }
                 }
@@ -109,7 +99,6 @@ public class DesktopJsonRecepcaoThread implements Runnable {
         } catch (SocketException erro) {
 
             if (!paradaManual) {
-
                 Util.registrarErroServidor(
                         "desktop",
                         "INTERNO/NÃO APLICÁVEL",
@@ -137,7 +126,6 @@ public class DesktopJsonRecepcaoThread implements Runnable {
         } catch (IOException erro) {
 
             if (!paradaManual) {
-
                 Util.registrarErroServidor(
                         "desktop",
                         "INTERNO/NÃO APLICÁVEL",
@@ -150,27 +138,21 @@ public class DesktopJsonRecepcaoThread implements Runnable {
         } finally {
 
             receptor = null;
-
             fecharClientes();
-
             executor.shutdownNow();
-
             atendimentos = null;
 
-            System.out.println(
-                    "Servidor JSON TLS encerrado."
-            );
+            System.out.println("Servidor JSON TLS encerrado.");
         }
     }
 
     /**
-     * Realiza o handshake TLS, recebe uma linha JSON,
-     * valida e processa a operação solicitada.
+     * Negocia TLS, recebe uma linha JSON, valida e processa a operacao.
+     * A persistencia e realizada no MySQL antes de confirmar com ACK.
      */
     private void atenderCliente(Socket cliente) {
 
-        String ip = cliente.getInetAddress()
-                .getHostAddress();
+        String ip = cliente.getInetAddress().getHostAddress();
 
         try (Socket socket = cliente) {
 
@@ -180,46 +162,46 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                 );
             }
 
-            // Negocia a conexao criptografada antes de ler os dados.
             socketTLS.startHandshake();
 
             try (
-                    BufferedReader input =
-                            new BufferedReader(
-                                    new InputStreamReader(
-                                            socketTLS.getInputStream(),
-                                            StandardCharsets.UTF_8
-                                    )
-                            );
-
-                    BufferedWriter output =
-                            new BufferedWriter(
-                                    new OutputStreamWriter(
-                                            socketTLS.getOutputStream(),
-                                            StandardCharsets.UTF_8
-                                    )
+                    BufferedReader input = new BufferedReader(
+                            new InputStreamReader(
+                                    socketTLS.getInputStream(),
+                                    StandardCharsets.UTF_8
                             )
+                    );
+                    BufferedWriter output = new BufferedWriter(
+                            new OutputStreamWriter(
+                                    socketTLS.getOutputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    )
             ) {
 
                 String linhaJson = input.readLine();
 
                 if (linhaJson == null || linhaJson.isBlank()) {
-                    throw new IllegalArgumentException(
-                            "Mensagem JSON vazia."
+                    enviarResposta(
+                            output,
+                            criarErro(
+                                    null,
+                                    "JSON_VAZIO",
+                                    "A mensagem JSON esta vazia."
+                            )
                     );
+                    return;
                 }
 
                 ChatMessage mensagem =
                         JsonProtocol.deserializeLine(linhaJson);
 
                 // -----------------------------------------
-                // CONSULTA DO HISTORICO
+                // CONSULTA DO HISTORICO NO MYSQL
                 // -----------------------------------------
-                if (mensagem.type()
-                        == ChatMessage.Type.HISTORY_REQUEST) {
+                if (mensagem.type() == ChatMessage.Type.HISTORY_REQUEST) {
 
                     if (mensagem.sender().isBlank()) {
-
                         enviarResposta(
                                 output,
                                 criarErro(
@@ -228,56 +210,58 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                                         "O remetente deve ser informado."
                                 )
                         );
-
                         return;
                     }
 
-                    String historico = Util.obterHistoricoHtml();
+                    final String historico;
+                    try {
+                        historico = Util.obterHistoricoHtml();
+                    } catch (IOException erroBanco) {
+                        registrarErroBanco(
+                                ip,
+                                "DesktopJsonRecepcaoThread - consulta historico",
+                                erroBanco
+                        );
+                        enviarResposta(
+                                output,
+                                criarErro(
+                                        mensagem.id(),
+                                        "ERRO_HISTORICO",
+                                        "Nao foi possivel consultar o historico no banco de dados."
+                                )
+                        );
+                        return;
+                    }
 
-                    ChatMessage respostaHistorico =
-                            new ChatMessage(
-
-                                    ChatMessage.CURRENT_VERSION,
-
-                                    null,
-
-                                    mensagem.id(),
-
-                                    ChatMessage.Type.HISTORY_RESPONSE,
-
-                                    "middleware",
-
-                                    mensagem.sender(),
-
-                                    historico,
-
-                                    "", "", "", "",
-
-                                    null,
-
-                                    java.util.Map.of(
-                                            "status", "SUCCESS",
-                                            "format", "text/html"
-                                    )
-                            );
+                    ChatMessage respostaHistorico = new ChatMessage(
+                            ChatMessage.CURRENT_VERSION,
+                            null,
+                            mensagem.id(),
+                            ChatMessage.Type.HISTORY_RESPONSE,
+                            "middleware",
+                            mensagem.sender(),
+                            historico,
+                            "", "", "", "",
+                            null,
+                            Map.of(
+                                    "status", "SUCCESS",
+                                    "format", "text/html"
+                            )
+                    );
 
                     enviarResposta(output, respostaHistorico);
 
                     System.out.println(
                             "Historico JSON TLS enviado para "
-                            + mensagem.sender()
-                            + " | IP: " + ip
+                            + mensagem.sender() + " | IP: " + ip
                     );
-
                     return;
                 }
 
                 // -----------------------------------------
-                // ENVIO DE MENSAGEM
+                // VALIDACAO DO ENVIO
                 // -----------------------------------------
-                if (mensagem.type()
-                        != ChatMessage.Type.SEND_MESSAGE) {
-
+                if (mensagem.type() != ChatMessage.Type.SEND_MESSAGE) {
                     enviarResposta(
                             output,
                             criarErro(
@@ -286,27 +270,24 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                                     "Operacao nao suportada pelo middleware."
                             )
                     );
-
                     return;
                 }
 
-                if (mensagem.sender().isBlank()) {
-
+                if (mensagem.sender().isBlank()
+                        || mensagem.sender().length() > 20) {
                     enviarResposta(
                             output,
                             criarErro(
                                     mensagem.id(),
                                     "REMETENTE_INVALIDO",
-                                    "O remetente deve ser informado."
+                                    "O remetente deve possuir entre 1 e 20 caracteres."
                             )
                     );
-
                     return;
                 }
 
                 if (mensagem.content().isBlank()
                         && mensagem.sticker().isBlank()) {
-
                     enviarResposta(
                             output,
                             criarErro(
@@ -315,56 +296,57 @@ public class DesktopJsonRecepcaoThread implements Runnable {
                                     "A mensagem nao pode estar vazia."
                             )
                     );
-
                     return;
                 }
 
-                // Utiliza o renderizador compartilhado pelo sistema.
                 String mensagemHtml =
                         RenderizadorMensagemHtml.renderizar(mensagem);
 
-                // Persistencia temporaria no repositorio atual.
-                Util.adicionarMensagem(mensagemHtml);
+                // O registro estruturado e o HTML sao persistidos no MySQL.
+                // Nenhum ACK e enviado se a gravacao falhar.
+                try {
+                    Util.registrarMensagem(mensagem, mensagemHtml);
+                } catch (IOException erroBanco) {
+                    registrarErroBanco(
+                            ip,
+                            "DesktopJsonRecepcaoThread - gravacao mensagem",
+                            erroBanco
+                    );
+                    enviarResposta(
+                            output,
+                            criarErro(
+                                    mensagem.id(),
+                                    "ERRO_PERSISTENCIA",
+                                    "Nao foi possivel registrar a mensagem no banco de dados."
+                            )
+                    );
+                    return;
+                }
 
-                // Confirma somente depois da persistencia.
                 ChatMessage confirmacao = new ChatMessage(
-
                         ChatMessage.CURRENT_VERSION,
-
                         null,
-
                         mensagem.id(),
-
                         ChatMessage.Type.ACK,
-
                         "middleware",
-
                         mensagem.sender(),
-
                         "Mensagem recebida e registrada.",
-
                         "", "", "", "",
-
                         null,
-
-                        java.util.Map.of(
-                                "status", "SUCCESS"
-                        )
+                        Map.of("status", "SUCCESS")
                 );
 
                 enviarResposta(output, confirmacao);
 
                 System.out.println(
-                        "Mensagem JSON TLS recebida de "
-                        + mensagem.sender()
-                        + " | IP: " + ip
+                        "Mensagem JSON TLS persistida no MySQL: "
+                        + mensagem.sender() + " | IP: " + ip
                 );
             }
 
         } catch (Exception erro) {
 
             if (!paradaManual) {
-
                 Util.registrarErroServidor(
                         "desktop",
                         "desktop",
@@ -375,104 +357,85 @@ public class DesktopJsonRecepcaoThread implements Runnable {
             }
 
         } finally {
-
             clientesAtivos.remove(cliente);
         }
     }
 
-    /**
-     * Cria uma resposta de erro estruturada.
-     */
+    private void registrarErroBanco(
+            String ip,
+            String origem,
+            Exception erro) {
+
+        Util.registrarErroServidor(
+                "desktop",
+                "MYSQL",
+                ip,
+                origem,
+                erro
+        );
+    }
+
     private ChatMessage criarErro(
             String correlationId,
             String codigo,
             String descricao) {
 
         return new ChatMessage(
-
                 ChatMessage.CURRENT_VERSION,
-
                 null,
-
                 correlationId,
-
                 ChatMessage.Type.ERROR,
-
                 "middleware",
-
                 "",
-
                 descricao,
-
                 "", "", "", "",
-
                 null,
-
-                java.util.Map.of(
-                        "code", codigo
-                )
+                Map.of("code", codigo)
         );
     }
 
-    /**
-     * Envia uma resposta JSON terminada em quebra de linha.
-     */
     private void enviarResposta(
             BufferedWriter output,
             ChatMessage resposta) throws IOException {
 
         output.write(JsonProtocol.serializeLine(resposta));
-
         output.flush();
     }
 
-    /**
-     * Encerra o servidor TLS.
-     */
     public void fecharServidor() {
 
         paradaManual = true;
 
         try {
-
             if (receptor != null && !receptor.isClosed()) {
                 receptor.close();
             }
-
         } catch (IOException erro) {
-
             System.err.println(
-                    "Erro ao fechar servidor JSON TLS: "
-                    + erro.getMessage()
+                    "Erro ao fechar servidor JSON TLS: " + erro.getMessage()
             );
         }
 
         fecharClientes();
 
         ExecutorService executor = atendimentos;
-
         if (executor != null) {
             executor.shutdownNow();
         }
     }
 
     private void fecharClientes() {
-
         for (Socket cliente : clientesAtivos) {
             fecharSocket(cliente);
         }
-
         clientesAtivos.clear();
     }
 
     private void fecharSocket(Socket socket) {
-
         try {
-
             if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
-
         } catch (IOException ignored) {
         }
     }

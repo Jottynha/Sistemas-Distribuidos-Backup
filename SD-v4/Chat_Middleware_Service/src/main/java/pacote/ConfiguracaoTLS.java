@@ -10,12 +10,15 @@ import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 import java.util.Arrays;
 import java.util.Properties;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 
 public final class ConfiguracaoTLS {
 
@@ -112,4 +115,41 @@ public final class ConfiguracaoTLS {
             Arrays.fill(senha, '\0');
         }
     }
+    /**
+     * Cria um contexto TLS de cliente confiando exclusivamente na CA publica
+     * indicada. A verificacao do hostname deve ser ativada no SSLSocket que
+     * utilizar este contexto.
+     */
+    public static SSLContext criarContextoCliente(Path arquivoCa)
+            throws IOException, GeneralSecurityException {
+
+        if (arquivoCa == null || !Files.isRegularFile(arquivoCa)) {
+            throw new IOException("Certificado raiz publico nao encontrado: " + arquivoCa);
+        }
+
+        X509Certificate certificado;
+        try (InputStream entrada = Files.newInputStream(arquivoCa)) {
+            CertificateFactory fabrica = CertificateFactory.getInstance("X.509");
+            certificado = (X509Certificate) fabrica.generateCertificate(entrada);
+        }
+
+        certificado.checkValidity();
+        if (certificado.getBasicConstraints() < 0) {
+            throw new GeneralSecurityException("O certificado informado nao e uma CA.");
+        }
+
+        KeyStore confiaveis = KeyStore.getInstance(KeyStore.getDefaultType());
+        confiaveis.load(null, null);
+        confiaveis.setCertificateEntry("chat-root-ca", certificado);
+
+        TrustManagerFactory gerenciador = TrustManagerFactory.getInstance(
+                TrustManagerFactory.getDefaultAlgorithm()
+        );
+        gerenciador.init(confiaveis);
+
+        SSLContext contexto = SSLContext.getInstance("TLS");
+        contexto.init(null, gerenciador.getTrustManagers(), new SecureRandom());
+        return contexto;
+    }
+
 }

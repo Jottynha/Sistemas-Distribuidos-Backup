@@ -1,5 +1,84 @@
+
+# =========================================================
+# PYTHON
+# =========================================================
+
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+env/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# =========================================================
+# JAVA / MAVEN
+# =========================================================
+
+**/target/
+**/build/
+**/dist/
+**/out/
+
+# =========================================================
+# IDEs
+# =========================================================
+
+**/nbproject/private/
+**/.idea/
+**/.settings/
+**/.classpath
+**/.project
+
+# Preservar .vscode/launch.json do cliente Python.
+
+# =========================================================
+# CONFIGURACOES PRIVADAS
+# =========================================================
+
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+**/tls.properties
+**/database.properties
+**/application-local.properties
+
+# =========================================================
+# CERTIFICADOS E CHAVES PRIVADAS
+# =========================================================
+
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Certificados publicos .cer e .crt podem ser versionados.
+
+# =========================================================
+# DADOS LOCAIS DO MIDDLEWARE
+# =========================================================
+
+SD-v4/Chat_Middleware_Service/data/
+
+# =========================================================
+# LOGS E BACKUPS
+# =========================================================
+
+*.log
+*.tmp
+*.bak
+*.backup
+*~
+
+# =========================================================
+# SISTEMA OPERACIONAL
+# =========================================================
+
+Thumbs.db
+.DS_Store
+desktop.ini

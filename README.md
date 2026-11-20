@@ -6,437 +6,540 @@
   <img src="https://img.shields.io/badge/Middleware-Java%2021-ED8B00?logo=openjdk&logoColor=white" alt="Middleware Java 21">
   <img src="https://img.shields.io/badge/Desktop-Swing-2563EB" alt="Desktop Swing">
   <img src="https://img.shields.io/badge/Web-JSP%20%7C%20WAR-0F766E" alt="Web JSP WAR">
+  <img src="https://img.shields.io/badge/Python-Tkinter-3776AB?logo=python&logoColor=white" alt="Cliente Python">
+  <img src="https://img.shields.io/badge/Database-MySQL%208.4-4479A1?logo=mysql&logoColor=white" alt="MySQL 8.4">
   <img src="https://img.shields.io/badge/Build-Maven-C71A36?logo=apachemaven&logoColor=white" alt="Maven">
 </p>
 
 <p align="center">
-  <b>Chat com clientes Desktop e Web, middleware Java, histórico compartilhado e serviços independentes.</b>
+  <b>Chat distribuído com clientes Desktop, Web e Python, middleware Java, comunicação segura e persistência centralizada em MySQL.</b>
 </p>
 
 ---
 
 # Chat Distribuído — Documentação do Software
 
-Projeto acadêmico da disciplina **Sistemas Distribuídos**, do curso de Engenharia de Computação. O sistema oferece um chat com clientes Desktop e Web, um middleware Java para comunicação e persistência, uma biblioteca centralizada de imagens e um serviço de coleta de erros.
+Projeto acadêmico da disciplina **Sistemas Distribuídos**, do curso de Engenharia de Computação. A plataforma utiliza um middleware Java como núcleo da comunicação entre clientes Desktop, Web e Python. As mensagens são trocadas por um protocolo JSON comum e persistidas em um banco MySQL acessado pelo middleware.
+
+> **Estado desta documentação:** atualização de 20/11/2026. A persistência MySQL local e a comunicação dos três tipos de cliente foram integradas e testadas. O schema do Banco B, o receptor interno TLS e a primeira implementação de replicação síncrona A→B foram preparados no código; a validação ponta a ponta ainda está pendente. O failover/reconexão automática, a conexão do banco entre hosts independentes e a publicidade multicast ainda não foram concluídos.
 
 ## Sumário
 
 - [1. Visão geral](#1-visão-geral)
-- [2. Requisitos da atividade](#2-requisitos-da-atividade)
-- [3. Arquitetura](#3-arquitetura)
-- [4. Módulos do sistema](#4-módulos-do-sistema)
-- [5. Interfaces de comunicação](#5-interfaces-de-comunicação)
-- [6. Persistência e arquivos](#6-persistência-e-arquivos)
-- [7. Registro de erros](#7-registro-de-erros)
-- [8. Decisões técnicas](#8-decisões-técnicas)
-- [9. Requisitos de ambiente](#9-requisitos-de-ambiente)
+- [2. Estado dos requisitos do Trabalho 1](#2-estado-dos-requisitos-do-trabalho-1)
+- [3. Arquitetura atual](#3-arquitetura-atual)
+- [4. Módulos do repositório](#4-módulos-do-repositório)
+- [5. Comunicação e protocolo](#5-comunicação-e-protocolo)
+- [6. Serviços, portas e endpoints](#6-serviços-portas-e-endpoints)
+- [7. Persistência MySQL](#7-persistência-mysql)
+- [8. Configuração do banco](#8-configuração-do-banco)
+- [9. Recursos visuais e logs](#9-recursos-visuais-e-logs)
 - [10. Compilação](#10-compilação)
-- [11. Execução sem NetBeans](#11-execução-sem-netbeans)
+- [11. Execução e implantação](#11-execução-e-implantação)
 - [12. Configuração de rede](#12-configuração-de-rede)
-- [13. Testes e demonstração](#13-testes-e-demonstração)
-- [14. Limitações e segurança](#14-limitações-e-segurança)
+- [13. Testes já realizados e testes pendentes](#13-testes-já-realizados-e-testes-pendentes)
+- [14. Próxima etapa: Banco B e tolerância a falhas](#14-próxima-etapa-banco-b-e-tolerância-a-falhas)
+- [15. Segurança e arquivos que não devem ser versionados](#15-segurança-e-arquivos-que-não-devem-ser-versionados)
 
 ## 1. Visão geral
 
-O Chat Distribuído permite que usuários conversem por dois clientes diferentes:
+A plataforma possui três modalidades de cliente:
 
-- **Desktop:** aplicação Java Swing que se comunica com o middleware por sockets TCP.
-- **Web:** aplicação JSP publicada no GlassFish. O navegador utiliza HTTP para enviar e consultar mensagens.
+- **Desktop:** aplicação Java Swing. Utiliza TCP protegido por TLS para enviar mensagens e consultar o histórico.
+- **Web:** aplicação JSP publicada no GlassFish. O navegador utiliza HTTPS para acessar a API do middleware.
+- **Python:** aplicação gráfica Tkinter, desenvolvida em linguagem diferente de Java. Utiliza TCP/TLS e HTTPS para conversar com o middleware e carregar recursos visuais.
 
-O middleware centraliza o histórico da conversa, os arquivos de log e os recursos visuais. Dessa forma, mensagens enviadas por um cliente podem ser consultadas pelo outro, e ambos utilizam as mesmas figurinhas e avatares.
+O middleware é responsável por validar e processar as mensagens, persistir o conteúdo no MySQL, recuperar o histórico, renderizar as mensagens para os clientes e disponibilizar recursos visuais e coleta de logs.
 
-O projeto é composto por três aplicações independentes:
+Os clientes **não acessam o MySQL diretamente**. Somente o middleware possui as credenciais JDBC.
 
-| Aplicação | Tecnologia | Artefato |
+### Tecnologias principais
+
+| Componente | Tecnologia | Empacotamento |
 |---|---|---|
-| Middleware | Java 21, sockets, `HttpServer` e Swing | JAR executável |
-| Cliente Desktop | Java 21 e Swing | JAR executável |
-| Cliente Web | JSP, HTML, CSS e JavaScript; compilação Java 17 | WAR para GlassFish |
+| Protocolo compartilhado | Java 17, Jackson e JSON | JAR Maven |
+| Middleware | Java 21, Virtual Threads, sockets TLS, HTTPS e JDBC | JAR Maven |
+| Cliente Desktop | Java 21, Swing e TLS | JAR Maven |
+| Cliente Web | JSP, HTML, CSS e JavaScript; publicado no GlassFish | WAR Maven |
+| Cliente Python | Python 3, Tkinter, sockets TLS e HTTPS | Código Python |
+| Persistência | MySQL Community Server 8.4 e MySQL Connector/J | Banco de dados remoto ou local |
 
-## 2. Requisitos da atividade
+## 2. Estado dos requisitos do Trabalho 1
 
-O desenvolvimento atende ao escopo descrito na atividade prática de Sistemas Distribuídos, que solicita a evolução do chat existente sem remover suas funcionalidades, com prioridade para concorrência, rastreabilidade, serviços independentes, centralização de arquivos e execução fora do NetBeans.
+A tabela diferencia o que já foi implementado do que ainda precisa de validação ou desenvolvimento. Uma funcionalidade testada localmente não é considerada automaticamente demonstrada em uma infraestrutura com vários hosts.
 
-| Item do enunciado | Solicitação | Implementação prevista no projeto |
-|---|---|---|
-| 1 | Carregar o histórico do TXT em memória e consultar a memória, sem reler o arquivo em cada acesso. | `Util` mantém uma lista compartilhada, carrega o arquivo na inicialização e sincroniza leituras e gravações. |
-| 1 | Persistir a mensagem antes de tratá-la como salva. | A gravação no TXT ocorre antes da atualização da lista em memória e da confirmação ao cliente. |
-| 2 | Manter o socket Desktop e criar atendimento Web independente. | Desktop utiliza TCP nas portas 6661 e 6662; Web utiliza HTTP na porta 8081. |
-| 2 | Permitir ativar e desativar serviços separadamente. | O painel controla Desktop, Web e coletor de logs por ações distintas. |
-| 2 | Escolher Platform Threads ou Virtual Threads e justificar. | Os atendimentos de rede utilizam Virtual Threads; a justificativa está na seção [Decisões técnicas](#8-decisões-técnicas). |
-| 3 | Executar o servidor Web e publicar a aplicação sem depender do NetBeans. | O middleware fornece a API e as imagens por HTTP; a interface JSP é empacotada em WAR e publicada no GlassFish. |
-| 3 | Centralizar figurinhas e disponibilizá-las por URL. | Imagens e avatares ficam na pasta `figurinhas` do middleware. |
-| 4 | Receber erros de clientes em um coletor único, mas gravar um arquivo por tipo de cliente. | `POST /api/logs` recebe erros e os separa em arquivos `client_<tipo>_errors.log`. |
-| 5 | Registrar erros do middleware em arquivos separados por serviço. | O middleware grava arquivos `server_middleware_<serviço>_errors.log`. |
-| 6 | Gerar JARs do Middleware e Desktop e WAR do Web. | Os três módulos possuem configurações Maven de empacotamento. |
-| 7 | Demonstrar concorrência, persistência, independência, imagens, logs e execução fora da IDE. | O roteiro de demonstração está na seção [Testes e demonstração](#13-testes-e-demonstração). |
+| Requisito do enunciado | Pontos | Situação atual |
+|---|---:|---|
+| Banco de dados remoto e modelo de persistência | 4,0 | **Persistência MySQL implementada e testada localmente.** Falta comprovar conexão de outro host e documentar a implantação remota. |
+| Protocolo JSON | 3,0 | **Implementado** nos fluxos atuais dos clientes e middleware. |
+| Criptografia das comunicações | 3,0 | **TLS/HTTPS implementado** nos canais atuais. Falta demonstrar a infraestrutura distribuída completa. |
+| Novo cliente gráfico em outra linguagem | 5,0 | **Cliente Python implementado**, com texto, emojis, figurinhas e histórico. |
+| Publicidade sincronizada por multicast | 4,0 | **Pendente de implementação/validação.** |
+| Replicação, segundo banco e failover automático | 6,0 | **Banco B e primeira fase de replicação síncrona A→B implementados no código; teste ponta a ponta pendente.** Promoção automática, failover e reconexão dos clientes ainda pendentes. |
 
-## 3. Arquitetura
+Também é obrigatório preparar e demonstrar pelo menos duas instâncias de cada modalidade (duas Web, duas Desktop e duas Python), envolvendo vários hosts na rede. Essa demonstração ainda precisa ser organizada e comprovada.
 
-O middleware é o ponto central do sistema. Os clientes não compartilham diretamente arquivos locais: eles utilizam os serviços de comunicação do middleware.
+## 3. Arquitetura atual
+
+O middleware centraliza a comunicação e a persistência. A operação de clientes continua centralizada no Middleware A. O Middleware B possui agora um modo inicial `--replica-only`, que recebe as mensagens replicadas por TLS na porta interna 6666 e grava no Banco B. A promoção do reserva para atendimento de clientes ainda será implementada.
 
 ```mermaid
 flowchart TB
-    D[Cliente Desktop - Swing]
-    W[Cliente Web - JSP no GlassFish]
-    M[Middleware Java]
-    R[(Histórico compartilhado<br/>RAM + TXT)]
-    A[(Figurinhas e avatares)]
-    L[Coletor de erros]
-    LD[(Logs dos clientes)]
-    LS[(Logs dos serviços)]
+    D[Cliente Desktop Swing]
+    W[Cliente Web JSP no GlassFish]
+    P[Cliente Python Tkinter]
+    M[Middleware Java 21]
+    DB[(MySQL A<br/>chat_distribuido)]
+    MB[Middleware B<br/>modo replica-only]
+    DBB[(MySQL B<br/>chat_distribuido_b)]
+    F[Diretório de figurinhas e avatares]
+    L[Coletor de logs HTTPS]
 
-    D -->|TCP 6661 e 6662| M
-    W -->|HTTP 8081| M
-    D -->|HTTP 8082| L
-    W -->|HTTP 8082| L
-    M <--> R
-    M --> A
-    L --> LD
-    M --> LS
+    D <-->|JSON sobre TLS :6664| M
+    P <-->|JSON sobre TLS :6665| M
+    W <-->|JSON sobre HTTPS :8443| M
+    M <-->|JDBC| DB
+    M -->|TLS :6666| MB
+    MB <-->|JDBC| DBB
+    M --> F
+    D -->|HTTPS| F
+    P -->|HTTPS| F
+    W -->|HTTPS| F
+    D -->|HTTPS :8443| L
+    W -->|HTTPS :8443| L
+    P -->|HTTPS :8443| L
 ```
 
-O GlassFish hospeda as páginas JSP. O `HttpServer` do JDK, executado no processo do middleware, disponibiliza a API do chat, os catálogos de recursos e as imagens. São processos e responsabilidades diferentes.
+O GlassFish hospeda a interface Web. O servidor HTTPS e os listeners TCP/TLS são executados pelo processo do middleware Java. São serviços distintos, embora façam parte da mesma plataforma.
 
-### 3.1. Portas
+### 3.1. Topologia de desenvolvimento atual
+
+Durante o desenvolvimento, os componentes podem ser executados na mesma máquina:
+
+- MySQL: `127.0.0.1:3306`.
+- Middleware: listeners TCP/TLS e servidor HTTPS locais.
+- GlassFish: publicação da aplicação Web.
+- Clientes: Desktop, navegador e Python.
+
+Na demonstração final, o MySQL deverá ser acessível pela rede e os clientes/middlewares deverão executar em hosts distintos, conforme o enunciado. O endereço do banco é configurável por variável de ambiente; não deve ser codificado nas classes Java.
+
+## 4. Módulos do repositório
+
+A estrutura principal do repositório é:
+
+```text
+Sistemas-Distribuidos-Backup/
+├── pom.xml                              # Agregador Maven multi-módulo
+├── Chat_Protocolo/
+│   └── pom.xml
+├── SD-v4/
+│   ├── Chat_Cliente_Desktop/
+│   │   └── pom.xml
+│   └── Chat_Middleware_Service/
+│       ├── pom.xml
+│       ├── src/main/java/pacote/
+│       │   ├── Util.java
+│       │   ├── DesktopJsonRecepcaoThread.java
+│       │   ├── TerceirosJsonRecepcaoThread.java
+│       │   └── database/
+│       │       ├── DatabaseConfig.java
+│       │       ├── DatabaseConnection.java
+│       │       ├── MensagemDAO.java
+│       │       └── TestarConexaoMySQL.java
+│       ├── data/logs/                   # Gerado em execução; não versionar
+│       └── figurinhas/                  # Recursos visuais do middleware
+├── SD-v6/
+│   └── Chat_Cliente_Web/
+│       └── pom.xml
+├── Chat_Cliente_Python/
+│   ├── main.py
+│   ├── diagnostico.py
+│   └── chat_client/
+│       ├── config.py
+│       ├── gui.py
+│       ├── protocol.py
+│       └── transport.py
+└── SD-v4/certificados/
+    └── chat-root-ca.cer                # Certificado público da CA
+```
+
+### 4.1. Protocolo compartilhado — `Chat_Protocolo`
+
+Define o envelope JSON utilizado pelos clientes e middleware. O projeto possui as classes `ChatMessage` e `JsonProtocol` e é dependência Maven dos módulos Java que utilizam o protocolo.
+
+Coordenadas Maven:
+
+```text
+com.mycompany:Chat_Protocolo:1.0.0
+```
+
+### 4.2. Middleware — `SD-v4/Chat_Middleware_Service`
+
+É o núcleo da plataforma. Responsabilidades principais:
+
+- inicializar os serviços TCP/TLS e HTTPS;
+- validar e processar mensagens JSON;
+- renderizar mensagens em HTML para o histórico;
+- persistir mensagens por meio de JDBC;
+- consultar mensagens no MySQL;
+- disponibilizar figurinhas, avatares e emojis;
+- receber logs dos clientes e registrar erros internos.
+
+Classes relevantes:
+
+| Classe | Responsabilidade |
+|---|---|
+| `Run.java` | Inicialização do middleware e do painel/modo sem interface. |
+| `Util.java` | Inicialização dos serviços, histórico, persistência, endpoints e logs. |
+| `DesktopJsonRecepcaoThread.java` | Listener JSON/TLS para o cliente Desktop. |
+| `TerceirosJsonRecepcaoThread.java` | Listener JSON/TLS para clientes de outras linguagens, incluindo Python. |
+| `ConfiguracaoTLS.java` | Configuração TLS do servidor. |
+| `database.DatabaseConfig` | Leitura e validação das configurações MySQL. |
+| `database.DatabaseConnection` | Abertura e teste de conexões JDBC. |
+| `database.MensagemDAO` | Inserção e consulta das mensagens persistidas. |
+
+### 4.3. Cliente Desktop — `SD-v4/Chat_Cliente_Desktop`
+
+Aplicação Swing para identificação do usuário, envio de mensagens, consulta do histórico, seleção de emojis e figurinhas. O cliente utiliza o canal JSON/TLS na porta 6664 e HTTPS para buscar recursos disponibilizados pelo middleware.
+
+### 4.4. Cliente Web — `SD-v6/Chat_Cliente_Web`
+
+Aplicação JSP publicada no GlassFish. Arquivos relevantes:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `index.jsp` | Entrada e seleção de identificação visual. |
+| `chat.jsp` | Validação da entrada, sessão e organização da interface. |
+| `mensagem.jsp` | Consulta e apresentação periódica do histórico. |
+| `conversa.jsp` | Envio de mensagens e consulta de catálogos. |
+| `WEB-INF/web.xml` | Endereços HTTPS do middleware e do coletor. |
+
+A interface é servida pelo GlassFish. As operações do chat e o carregamento dos recursos são realizados por HTTPS diretamente no middleware.
+
+### 4.5. Cliente Python — `Chat_Cliente_Python`
+
+Cliente gráfico desenvolvido em Python/Tkinter. Permite consultar o histórico, enviar mensagens de texto, inserir emojis Unicode e selecionar/enviar figurinhas do catálogo disponibilizado pelo middleware. O transporte utiliza JSON sobre TLS e valida o certificado da CA do projeto.
+
+O arquivo `diagnostico.py` permite testar a configuração, o certificado TLS e a consulta do histórico sem abrir a interface gráfica.
+
+## 5. Comunicação e protocolo
+
+Os fluxos novos utilizam JSON codificado em UTF-8, com uma mensagem por linha e delimitador `\n` nos sockets TCP/TLS. O protocolo compartilhado define campos como:
+
+| Campo | Finalidade |
+|---|---|
+| `protocolVersion` | Versão do protocolo. |
+| `id` | Identificador único da mensagem/operação. |
+| `correlationId` | Associação com uma requisição anterior, quando aplicável. |
+| `type` | Tipo da operação. |
+| `sender` | Remetente. |
+| `recipient` | Destinatário. |
+| `content` | Conteúdo textual. |
+| `mode`, `color`, `avatar`, `sticker` | Informações de apresentação e recursos. |
+| `sentAt` | Data/hora informada na mensagem. |
+| `metadata` | Metadados adicionais. |
+
+Tipos utilizados incluem `SEND_MESSAGE`, `HISTORY_REQUEST`, `HISTORY_RESPONSE`, `ACK` e `ERROR`. Os clientes e middleware compartilham a versão de protocolo 1.
+
+### 5.1. Fluxo de envio
+
+1. O cliente monta o envelope `SEND_MESSAGE`.
+2. O middleware recebe e desserializa o JSON.
+3. O middleware valida os campos necessários e gera o HTML da mensagem.
+4. O `MensagemDAO` grava os campos estruturados e `rendered_html` no MySQL.
+5. O middleware envia `ACK` somente após a operação de persistência concluir com sucesso.
+
+### 5.2. Fluxo de histórico
+
+1. O cliente envia `HISTORY_REQUEST`.
+2. O middleware consulta `MensagemDAO.buscarHistoricoHtml()`.
+3. Os fragmentos HTML são unidos e enviados em `HISTORY_RESPONSE`.
+4. Os clientes apresentam o histórico recebido.
+
+## 6. Serviços, portas e endpoints
+
+### 6.1. Portas atuais
 
 | Porta | Protocolo | Responsabilidade |
 |---:|---|---|
-| 6661 | TCP | Consulta do histórico pelo cliente Desktop. |
-| 6662 | TCP | Recebimento de mensagens do cliente Desktop. |
-| 8081 | HTTP | API do chat, catálogos e arquivos de imagem. |
-| 8082 | HTTP | Coletor centralizado de erros dos clientes. |
-| 8080 | HTTP | Acesso padrão ao GlassFish; pode variar conforme o domínio. |
+| 6664 | TCP sobre TLS | Cliente Desktop Java: envio e histórico JSON. |
+| 6665 | TCP sobre TLS | Clientes de outras linguagens, incluindo Python. |
+| 8443 | HTTPS | API do chat, recursos visuais, saúde do serviço e coletor de logs. |
+| 8080 | HTTP (padrão) | Interface Web hospedada no GlassFish; pode variar conforme o domínio. |
+| 3306 | MySQL/TCP | Banco acessado pelo middleware. |
 
-## 4. Módulos do sistema
+As portas antigas 6661, 6662, 6663, 8081 e 8082 permanecem apenas como referências legadas no código/configuração, sem listeners oficiais na arquitetura atual.
 
-### 4.1. Middleware — `SD-v4/Chat_Middleware_Service`
+### 6.2. Endpoints HTTPS do middleware
 
-É o servidor central do sistema. Sua classe `Util` concentra as configurações, o histórico compartilhado, a inicialização dos serviços HTTP e o registro de erros.
-
-Principais arquivos:
-
-| Arquivo | Responsabilidade |
-|---|---|
-| `Run.java` | Inicializa o repositório e abre o painel ou inicia os serviços em modo sem interface. |
-| `Chat_Middleware_Service.java` | Ponto de entrada da aplicação. |
-| `Util.java` | Gerencia histórico, portas, serviços HTTP, recursos e logs. |
-| `DesktopEnvioThread.java` | Mantém o socket de consulta do histórico na porta 6661. |
-| `DesktopRecepcaoThread.java` | Mantém o socket de recebimento de mensagens na porta 6662. |
-| `FrmPainelDeControle.java` | Permite iniciar e interromper os serviços individualmente. |
-
-No painel, os controles relevantes são `BtnAtivarDesktop`, `BtnAtivarWeb` e `BtnAtivarLog`. O botão legado de terceiros não representa o coletor de logs.
-
-### 4.2. Cliente Desktop — `SD-v4/Chat_Cliente_Desktop`
-
-Aplicação Swing utilizada para entrar no chat, escolher identificação visual, enviar mensagens e consultar o histórico.
-
-Principais arquivos:
-
-| Arquivo | Responsabilidade |
-|---|---|
-| `FrmLogin.java` | Coleta nickname, cor e avatar. |
-| `FrmChat.java` | Exibe a conversa, envia mensagens e disponibiliza emojis e figurinhas. |
-| `Util.java` | Mantém os dados do usuário, endereço do middleware, portas e URLs. |
-
-O cliente utiliza TCP para o fluxo de mensagens e HTTP para buscar imagens e enviar erros ao coletor.
-
-### 4.3. Cliente Web — `SD-v6/Chat_Cliente_Web`
-
-Aplicação JSP publicada no GlassFish e acessada pelo navegador.
-
-| Arquivo | Responsabilidade |
-|---|---|
-| `index.jsp` | Tela de entrada e seleção de identificação visual. |
-| `chat.jsp` | Valida os dados de entrada, cria a sessão e organiza a tela. |
-| `topo.jsp` | Apresenta o usuário conectado. |
-| `mensagem.jsp` | Consulta e apresenta o histórico periodicamente. |
-| `conversa.jsp` | Envia mensagens e consulta os catálogos de recursos. |
-| `WEB-INF/web.xml` | Define os endereços do middleware e do coletor. |
-
-O navegador envia e consulta mensagens por HTTP. A atualização do histórico é feita por consultas periódicas, não por WebSocket.
-
-## 5. Interfaces de comunicação
-
-### 5.1. Comunicação Desktop por TCP
-
-O cliente Desktop mantém compatibilidade com o protocolo de texto UTF utilizado pelo projeto original, por meio de `ObjectInputStream` e `ObjectOutputStream` com `readUTF()` e `writeUTF()`.
-
-- **Porta 6661:** o cliente solicita o histórico; o servidor consulta a lista em memória e devolve o conteúdo.
-- **Porta 6662:** o cliente envia uma mensagem; o servidor tenta persistir e responde `OK` ou `ERROR`.
-
-A confirmação `OK` indica que a rotina de persistência foi concluída. O cliente deve limpar o campo de mensagem somente após receber essa confirmação.
-
-### 5.2. API HTTP do middleware
-
-Base local padrão: `http://127.0.0.1:8081`.
+Base local de desenvolvimento: `https://127.0.0.1:8443`.
 
 | Método | Endpoint | Descrição | Resposta |
 |---|---|---|---|
-| GET | `/health` | Verifica se o serviço HTTP está disponível. | Texto `OK`. |
-| GET | `/api/messages` | Consulta o histórico compartilhado. | Conteúdo HTML do histórico. |
-| POST | `/api/messages` | Envia uma mensagem para persistência. | `OK` ou erro HTTP. |
-| GET | `/api/stickers` | Lista as figurinhas disponíveis. | Nomes separados por quebra de linha. |
+| GET | `/health` | Verifica disponibilidade do HTTPS. | Texto `OK`. |
+| POST | `/api/messages` | Recebe `HISTORY_REQUEST` ou `SEND_MESSAGE` em JSON. | `HISTORY_RESPONSE`, `ACK` ou `ERROR` em JSON. |
+| GET | `/api/stickers` | Lista as figurinhas disponíveis. | Array JSON de nomes de arquivos. |
 | GET | `/api/avatars` | Lista os avatares disponíveis. | Nomes separados por quebra de linha. |
-| GET | `/api/emojis` | Lista os caracteres Unicode oferecidos pelo sistema. | Um item por linha. |
+| GET | `/api/emojis` | Lista os emojis oferecidos pelo sistema. | Um item por linha. |
 | GET | `/figurinhas/{arquivo}` | Recupera uma figurinha. | Arquivo de imagem. |
 | GET | `/figurinhas/avatars/{arquivo}` | Recupera um avatar. | Arquivo de imagem. |
+| POST | `/api/logs` | Recebe logs de clientes quando o coletor está ativado. | Texto `OK` ou erro HTTP. |
 
-O corpo de `POST /api/messages` contém o conteúdo da mensagem em texto UTF-8. O middleware só responde com `OK` depois de executar a persistência.
+O endpoint `/api/stickers` retorna JSON. Os clientes que consomem esse endpoint devem interpretar a resposta como JSON, e não como uma lista de linhas de texto.
 
-### 5.3. Coletor de erros
+### 6.3. GlassFish
 
-Endpoint: `POST http://127.0.0.1:8082/api/logs`.
-
-O corpo recebido pelo coletor utiliza quatro campos separados por tabulação:
-
-```text
- tipo<TAB>computador/identificação<TAB>Classe:Método<TAB>mensagem
-```
-
-O middleware acrescenta a data/hora e identifica o IP remoto da conexão antes de gravar o evento no arquivo do tipo de cliente correspondente.
-
-## 6. Persistência e arquivos
-
-### 6.1. Histórico
-
-O histórico é armazenado em `data/RepositorioDesktop.txt` e mantido em uma lista compartilhada na memória do middleware.
-
-Na inicialização, o arquivo é lido uma vez. Consultas posteriores usam a estrutura em memória. Ao receber uma mensagem, o middleware:
-
-1. valida e normaliza o conteúdo;
-2. adquire o bloqueio de escrita do histórico;
-3. grava no final do TXT e solicita a persistência dos dados;
-4. atualiza a lista em memória;
-5. permite que o serviço confirme o recebimento ao cliente.
-
-Se a gravação lançar uma `IOException`, a lista em memória não é atualizada e a mensagem não deve ser confirmada como persistida. O código também tenta restaurar o tamanho anterior do arquivo quando ocorre falha durante a escrita.
-
-### 6.2. Diretórios
-
-Estrutura utilizada pelo middleware:
+O endereço local de desenvolvimento é normalmente:
 
 ```text
-Chat_Middleware_Service/
-├── data/
-│   ├── RepositorioDesktop.txt
-│   └── logs/
-└── figurinhas/
-    ├── beijo.png
-    ├── coracao.png
-    ├── dinheiro.png
-    ├── fig1.gif
-    ├── fig2.gif
-    ├── risada.png
-    ├── sorriso.png
-    └── avatars/
-        ├── batman.png
-        ├── flash.png
-        ├── indefinido.png
-        ├── lanterna-verde.png
-        ├── menina.png
-        └── menino.png
+http://localhost:8080/Chat_Cliente_Web/
 ```
 
-Os arquivos reais podem variar conforme os recursos adicionados ao diretório. O catálogo é obtido pelo middleware; os nomes e as extensões devem corresponder exatamente aos arquivos, especialmente em sistemas Linux, que diferenciam maiúsculas de minúsculas.
+O GlassFish hospeda a interface Web, mas não substitui o middleware. O middleware HTTPS deve estar em execução para que o navegador consiga enviar mensagens e consultar o histórico.
 
-### 6.3. Localização dos dados
+## 7. Persistência MySQL
 
-Na versão de `Util.java` com o método `localizarDiretorioBase()`, o diretório-base é descoberto a partir da localização das classes ou do JAR. Ele pode ser sobrescrito por:
+O histórico oficial da plataforma está centralizado no MySQL. O middleware utiliza MySQL Connector/J por JDBC; os clientes não possuem conexão nem credenciais de banco.
 
-- propriedade Java `-Dchat.server.baseDir=C:\\caminho\\do\\servidor`;
-- variável de ambiente `CHAT_SERVER_BASE_DIR`.
+### 7.1. Banco e tabela
 
-Exemplo no PowerShell:
+Banco utilizado:
+
+```text
+chat_distribuido
+```
+
+Tabela principal:
+
+```text
+mensagens
+```
+
+O schema versionado deve ser mantido em `database/schema.sql`. A estrutura utilizada é:
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `message_id` | `CHAR(36)` | Identificador único da mensagem; chave primária. |
+| `message_type` | `VARCHAR(32)` | Tipo da mensagem. |
+| `sender` | `VARCHAR(120)` | Remetente. |
+| `recipient` | `VARCHAR(120)` | Destinatário. |
+| `content` | `MEDIUMTEXT` | Conteúdo textual. |
+| `mode` | `VARCHAR(32)` | Modo de apresentação. |
+| `color` | `VARCHAR(16)` | Cor da mensagem. |
+| `avatar` | `VARCHAR(255)` | Identificador do avatar. |
+| `sticker` | `VARCHAR(255)` | Identificador da figurinha. |
+| `sent_at` | `DATETIME(6)` | Data/hora de envio em UTC. |
+| `metadata` | `JSON` | Metadados estruturados. |
+| `rendered_html` | `MEDIUMTEXT` | HTML usado pelos clientes no histórico. |
+| `created_at` | `DATETIME(6)` | Data/hora de inserção no banco. |
+
+A tabela utiliza InnoDB, `utf8mb4`, chave primária em `message_id` e índices para data de envio e destinatário/data.
+
+### 7.2. Camada JDBC
+
+| Classe | Responsabilidade |
+|---|---|
+| `DatabaseConfig` | Carrega host, porta, banco, usuário, senha e modo SSL por variáveis de ambiente. |
+| `DatabaseConnection` | Abre conexões via `DriverManager` e realiza teste básico. |
+| `MensagemDAO` | Executa `INSERT`, inserção idempotente por `message_id`, consulta o HTML em ordem cronológica e conta os registros. |
+| `replication.ReplicacaoClient` | Envia mensagens do principal ao reserva por TLS e aguarda ACK. |
+| `replication.ReplicacaoRecepcaoThread` | Recebe replicações no Middleware B e persiste no Banco B sem recursão. |
+| `replication.ReplicacaoConfig` | Valida host, porta, token e CA usados no canal de replicação. |
+
+O middleware valida a conexão com o banco durante a inicialização. A consulta do histórico e a gravação de novas mensagens utilizam a tabela `mensagens`. Quando `CHAT_REPLICATION_ENABLED=true` no Middleware A, a gravação utiliza inserção idempotente e aguarda a confirmação TLS do Middleware B antes de confirmar a mensagem ao cliente.
+
+### 7.3. Persistência confirmada
+
+Foi testado localmente que:
+
+- o middleware conecta ao MySQL 8.4.13;
+- a tabela `mensagens` é acessível pela camada JDBC;
+- mensagens podem ser persistidas e consultadas pelo histórico compartilhado;
+- o histórico permanece disponível depois de encerrar e iniciar novamente o processo do middleware.
+
+O TXT antigo não é mais a fonte oficial do histórico no fluxo atualizado. O conteúdo legado pode ser preservado para consulta ou migração manual, mas não deve voltar a ser utilizado como mecanismo principal de persistência.
+
+### 7.4. Criar o banco a partir do repositório
+
+Execute o script `database/schema.sql` no MySQL Workbench ou por um cliente MySQL com permissões para criar banco e tabela. O middleware não cria automaticamente o schema; o banco e a tabela devem existir antes de iniciar o serviço.
+
+Depois, crie um usuário próprio para a aplicação e conceda somente as permissões necessárias à tabela `mensagens` (leitura e inserção para a implementação atual). Não utilize `root` na aplicação.
+
+## 8. Configuração do banco
+
+O middleware lê a configuração exclusivamente de variáveis de ambiente. Nenhuma senha deve ser gravada no código ou em arquivos versionados.
+
+| Variável | Obrigatória? | Padrão/Exemplo local |
+|---|---|---|
+| `CHAT_DB_HOST` | Não | `127.0.0.1` |
+| `CHAT_DB_PORT` | Não | `3306` |
+| `CHAT_DB_NAME` | Não | `chat_distribuido` |
+| `CHAT_DB_USER` | Sim | Usuário dedicado, por exemplo `chat_app` |
+| `CHAT_DB_PASSWORD` | Sim | Senha privada do usuário do banco. |
+| `CHAT_DB_SSL_MODE` | Não | `PREFERRED` |
+| `CHAT_REPLICATION_ENABLED` | Não | `false`; no principal com B ativo, definir `true`. |
+| `CHAT_REPLICATION_HOST` | Quando habilitada | Host/IP do Middleware B; local: `127.0.0.1`. |
+| `CHAT_REPLICATION_PORT` | Não | `6666`. |
+| `CHAT_REPLICATION_TOKEN` | Quando habilitada/no receptor | Segredo compartilhado entre A e B; nao versionar. |
+| `CHAT_REPLICATION_CA_FILE` | Não | Caminho da CA pública; padrão `SD-v4/certificados/chat-root-ca.cer`. |
+
+Modos SSL aceitos pelo código: `PREFERRED`, `REQUIRED`, `VERIFY_CA` e `VERIFY_IDENTITY`. O modo efetivamente escolhido deve ser compatível com a configuração TLS do servidor MySQL. O desenvolvimento local foi validado com `PREFERRED`; a segurança TLS do enlace JDBC em outra máquina ainda deve ser configurada e testada antes da demonstração remota.
+
+### 8.1. Configuração temporária no PowerShell
+
+Os comandos abaixo definem variáveis apenas para a janela atual do PowerShell e para os processos iniciados por ela. Substitua o usuário e a senha pelos valores criados localmente; não inclua a senha em commits ou prints públicos.
 
 ```powershell
-$env:CHAT_SERVER_BASE_DIR = "D:\ChatServidor"
-java -jar .\target\Chat_Middleware_Service-1.0-SNAPSHOT.jar --headless
+$env:CHAT_DB_HOST = "127.0.0.1"
+$env:CHAT_DB_PORT = "3306"
+$env:CHAT_DB_NAME = "chat_distribuido"
+$env:CHAT_DB_USER = "chat_app"
+$env:CHAT_DB_PASSWORD = "<SENHA_LOCAL>"
+$env:CHAT_DB_SSL_MODE = "PREFERRED"
 ```
 
-O diretório configurado passa a conter `data/` e `figurinhas/`. Confira no console os caminhos impressos durante a inicialização. Se a versão local de `Util.java` ainda declarar apenas `Path.of("data")` e `Path.of("figurinhas")`, os caminhos serão relativos ao diretório de trabalho (`user.dir`); nesse caso, aplique a versão corrigida com `localizarDiretorioBase()`.
+Para tornar as variáveis persistentes no Windows, configure-as nas variáveis de ambiente do usuário ou do sistema. Depois de alterá-las, feche e reabra o NetBeans/terminal para que o novo processo as receba.
 
-O histórico e os logs são dados de execução, não código-fonte. Eles ficam na máquina que executa o middleware e devem ser incluídos em rotinas de backup quando precisarem ser preservados. Clonar o Git em outra máquina não copia automaticamente os dados gerados localmente.
+### 8.2. Máquina que hospeda o banco
 
-## 7. Registro de erros
+Na configuração de desenvolvimento atual, MySQL e middleware estão na mesma máquina e `CHAT_DB_HOST` pode permanecer como `127.0.0.1`.
 
-O sistema possui um único coletor HTTP para erros de clientes, mas mantém arquivos separados por tipo de cliente. Os erros internos do middleware são registrados localmente por serviço.
+Para a demonstração em rede, a máquina que hospeda o MySQL será o servidor do histórico central. O middleware deverá usar o endereço IPv4 dessa máquina. Será necessário:
 
-### 7.1. Erros dos clientes
+1. criar uma conta MySQL autorizada somente para o host/IP do middleware;
+2. configurar o MySQL para aceitar conexões na interface de rede apropriada;
+3. permitir TCP 3306 no Firewall do Windows somente a partir do middleware;
+4. configurar `CHAT_DB_HOST` no ambiente do middleware;
+5. testar a conexão JDBC a partir do outro computador.
 
-Diretório: `data/logs/`.
+Não exponha a porta 3306 à internet. O teste de acesso MySQL remoto entre computadores ainda está pendente.
+
+### 8.3. Configuração do canal de replicação
+
+O Middleware A envia replicações ao Middleware B por um canal TCP/TLS interno, padrão na porta `6666`. Configure no processo A:
+
+- `CHAT_REPLICATION_ENABLED=true`;
+- `CHAT_REPLICATION_HOST` com o endereço do Middleware B;
+- `CHAT_REPLICATION_PORT=6666`;
+- `CHAT_REPLICATION_TOKEN` com o mesmo segredo definido no B;
+- opcionalmente `CHAT_REPLICATION_CA_FILE` com o caminho da CA pública.
+
+No processo B, configure `CHAT_DB_NAME=chat_distribuido_b`, `CHAT_DB_USER=chat_app_b`, a senha correspondente, `CHAT_REPLICATION_PORT=6666` e o mesmo `CHAT_REPLICATION_TOKEN`. O B é iniciado com `--replica-only` e não inicia os listeners de clientes nesta primeira fase.
+
+O segredo e as credenciais são lidos do ambiente do processo. Não os grave em scripts, arquivos versionados ou linhas de comando.
+
+## 9. Recursos visuais e logs
+
+### 9.1. Figurinhas e avatares
+
+As imagens ficam no diretório `figurinhas/` relativo à pasta-base do middleware. Os avatares ficam em `figurinhas/avatars/`. O middleware lista os arquivos aceitos e disponibiliza seu conteúdo por HTTPS. As extensões de imagem reconhecidas incluem PNG, GIF, JPG, JPEG e WEBP.
+
+A pasta pode ser preenchida com os arquivos visuais do projeto. Os arquivos de imagem precisam ser distribuídos junto com a implantação do middleware; não são gravados na tabela `mensagens`.
+
+### 9.2. Logs
+
+Os logs de execução permanecem em arquivos locais no diretório `data/logs/`. Eles não são o histórico das conversas.
+
+Arquivos comuns:
 
 | Arquivo | Origem |
 |---|---|
 | `client_desktop_errors.log` | Cliente Desktop. |
-| `client_web_errors.log` | Cliente Web/navegador. |
-| `client_<tipo>_errors.log` | Outros tipos de clientes. |
+| `client_web_errors.log` | Cliente Web. |
+| `client_<tipo>_errors.log` | Outros clientes, como Python, conforme o tipo informado. |
+| `server_middleware_desktop_errors.log` | Serviço TCP/TLS Desktop. |
+| `server_middleware_web_errors.log` | Serviço HTTPS/Web. |
+| `server_middleware_internal_errors.log` | Falhas internas do middleware e integração MySQL. |
 
-Formato de cada ocorrência:
-
-```text
- data/hora | computador/identificação | IP | Classe:Método | mensagem do erro
-
-```
-
-No navegador, a identificação disponível ao JavaScript é baseada nas informações do agente do navegador; o navegador não fornece de forma geral o hostname real do computador ao JavaScript.
-
-### 7.2. Erros do middleware
-
-| Arquivo | Origem |
-|---|---|
-| `server_middleware_desktop_errors.log` | Serviço Desktop. |
-| `server_middleware_web_errors.log` | Serviço HTTP/Web. |
-| `server_middleware_internal_errors.log` | Falhas internas ou sem serviço cliente específico. |
-| `server_middleware_<tipo>_errors.log` | Serviços futuros, se adicionados. |
-
-Formato de cada ocorrência:
-
-```text
- data/hora | serviço | cliente/identificação | IP | Classe:Método | mensagem do erro
-
-```
-
-Os registros são anexados ao arquivo existente, com uma linha em branco entre ocorrências. A implementação utiliza sincronização por arquivo para evitar que threads concorrentes misturem os registros.
-
-## 8. Decisões técnicas
-
-### 8.1. Virtual Threads
-
-As Virtual Threads do Java 21 foram escolhidas para os atendimentos de rede do middleware: conexões TCP de consulta e recebimento, requisições HTTP e recebimento de logs. Essas tarefas passam boa parte do tempo aguardando entrada e saída de rede, portanto são predominantemente bloqueantes.
-
-O uso de Virtual Threads permite estruturar o atendimento como uma tarefa por conexão sem manter uma Platform Thread dedicada para cada conexão. Os serviços mantêm seus próprios sockets HTTP/TCP e executores, o que também facilita o encerramento independente.
-
-A interface Swing permanece sob responsabilidade da Event Dispatch Thread (EDT). Operações de rede do cliente Desktop devem ocorrer fora da EDT para não bloquear a interação com a interface.
-
-### 8.2. Histórico em memória e TXT
-
-A lista em memória evita abrir e ler o TXT a cada consulta. O TXT mantém a persistência entre reinicializações. O `ReentrantReadWriteLock` permite consultas concorrentes e serializa operações que alteram o histórico.
-
-A decisão de gravar antes de atualizar a lista é necessária para impedir que uma mensagem seja apresentada como persistida quando a escrita falhou. A confirmação ao cliente é enviada somente depois da persistência.
-
-### 8.3. Separação dos serviços
-
-O Desktop, o atendimento Web e o coletor de logs podem ser iniciados ou interrompidos individualmente. A separação reduz o acoplamento operacional: uma falha ou manutenção em um serviço não exige, por projeto, o encerramento dos demais.
-
-### 8.4. Centralização de imagens
-
-As imagens são armazenadas no middleware e disponibilizadas por HTTP. Os clientes guardam referências/URLs, não caminhos absolutos locais. Isso permite que a mesma mensagem seja renderizada em máquinas diferentes e que novos recursos sejam disponibilizados sem recompilar os clientes.
-
-### 8.5. Protocolo Web
-
-O cliente Web usa HTTP porque é compatível com o navegador e com a aplicação JSP publicada no GlassFish. O histórico é atualizado por consultas periódicas ao endpoint HTTP; a implementação não depende de WebSocket.
-
-## 9. Requisitos de ambiente
-
-| Componente | Requisito |
-|---|---|
-| Middleware | JDK 21 ou superior, necessário para Virtual Threads. |
-| Cliente Desktop | JDK 21 ou superior. |
-| Cliente Web | Maven e servidor GlassFish compatível com Jakarta EE 11; o módulo está configurado para compilar com alvo Java 17. |
-| Compilação | Maven 3.x ou Maven incluído na instalação do NetBeans. |
-| Rede | Acesso às portas utilizadas pelos serviços e ao HTTP do GlassFish. |
-
-A configuração compartilhada do NetBeans identifica o servidor de desenvolvimento como GlassFish 8 com suporte Jakarta EE 11. A implantação deve ser validada na instalação efetivamente utilizada.
+O endpoint `/api/logs` utiliza o mesmo servidor HTTPS da porta 8443 e recebe logs quando o coletor é ativado pelo painel. Os diretórios `data/` e `logs/` são dados de execução e não devem ser tratados como código-fonte.
 
 ## 10. Compilação
 
-Os comandos abaixo são para PowerShell. Execute-os a partir da raiz do repositório.
+O repositório possui um POM agregador na raiz, que declara os módulos Maven:
 
-Se `mvn` estiver no `PATH`, use o comando diretamente. Caso contrário, configure o Maven incluído no NetBeans, ajustando o caminho para a instalação local:
+- `Chat_Protocolo`;
+- `SD-v4/Chat_Cliente_Desktop`;
+- `SD-v4/Chat_Middleware_Service`;
+- `SD-v6/Chat_Cliente_Web`.
+
+A dependência `Chat_Protocolo` é compilada no mesmo reactor Maven quando se utiliza `-am`.
+
+### 10.1. Compilar somente o middleware e suas dependências
+
+A partir da raiz do repositório:
 
 ```powershell
-$mvn = "$env:USERPROFILE\Downloads\netbeans-31-bin\netbeans\java\maven\bin\mvn.cmd"
-Test-Path $mvn
+mvn -pl SD-v4/Chat_Middleware_Service -am clean install
 ```
 
-O resultado de `Test-Path` deve ser `True`. Compile cada módulo:
+### 10.2. Compilar todos os módulos
+
+A partir da raiz:
 
 ```powershell
-# Middleware
-Set-Location ".\SD-v4\Chat_Middleware_Service"
-& $mvn clean package
-
-# Cliente Desktop
-Set-Location "..\Chat_Cliente_Desktop"
-& $mvn clean package
-
-# Cliente Web
-Set-Location "..\..\SD-v6\Chat_Cliente_Web"
-& $mvn clean package
+mvn clean install
 ```
 
-Artefatos esperados:
+Se `mvn` não estiver no `PATH`, o Maven incluído no NetBeans pode ser utilizado. O caminho da instalação é específico de cada computador; não deve ser fixado nos scripts do projeto.
+
+> **Maven Wrapper:** ainda não foi adicionado ao repositório. A inclusão de `mvnw.cmd` e `mvnw` é uma melhoria pendente para padronizar a versão do Maven e simplificar a compilação após um `git clone`.
+
+### 10.3. Artefatos esperados
 
 ```text
-SD-v4/Chat_Middleware_Service/target/Chat_Middleware_Service-1.0-SNAPSHOT.jar
+Chat_Protocolo/target/Chat_Protocolo-1.0.0.jar
 SD-v4/Chat_Cliente_Desktop/target/Chat_Cliente_Desktop-1.0-SNAPSHOT.jar
+SD-v4/Chat_Middleware_Service/target/Chat_Middleware_Service-1.0-SNAPSHOT.jar
 SD-v6/Chat_Cliente_Web/target/Chat_Cliente_Web.war
 ```
 
-O `clean package` remove a pasta `target` anterior e gera um novo artefato. Se a compilação falhar, corrija o erro antes de iniciar ou publicar a versão anterior.
+O build Maven dos módulos foi executado com sucesso no ambiente de desenvolvimento. A execução dos artefatos com a IDE fechada e suas dependências externas empacotadas ainda deve ser validada antes da videoaula.
 
-## 11. Execução sem NetBeans
+## 11. Execução e implantação
 
 ### 11.1. Middleware
 
-Abra um terminal na pasta `SD-v4/Chat_Middleware_Service`.
+O ponto de entrada configurado no manifesto do JAR é `pacote.Run`. O middleware disponibiliza o painel de controle e os serviços em modo sem interface, conforme os argumentos implementados na classe `Run`.
 
-Com painel de controle:
+A execução autônoma do JAR com todas as dependências (protocolo compartilhado e Connector/J) ainda precisa ser empacotada/verificada. Não considere o JAR simples como distribuição autocontida até concluir essa etapa.
 
-```powershell
-java -jar .\target\Chat_Middleware_Service-1.0-SNAPSHOT.jar
-```
-
-Sem interface gráfica, iniciando os serviços automaticamente:
-
-```powershell
-java -jar .\target\Chat_Middleware_Service-1.0-SNAPSHOT.jar --headless
-```
-
-O modo `--headless` inicia Desktop, HTTP/Web e coletor de logs. Para encerrar, utilize `Ctrl+C`; o shutdown hook solicita o encerramento dos serviços.
+Para testar localmente as duas instâncias a partir de dois terminais PowerShell, use os scripts `scripts/windows/iniciar-middleware-b.ps1` (primeiro) e `scripts/windows/iniciar-middleware-a.ps1` (depois). Eles solicitam as senhas sem salvá-las no repositório e usam o Maven local/NetBeans. Os scripts são destinados ao desenvolvimento na mesma máquina; para hosts independentes, altere host, certificado SAN e regras de firewall conforme a rede.
 
 ### 11.2. Cliente Desktop
 
-Abra outro terminal na pasta `SD-v4/Chat_Cliente_Desktop`:
+O cliente Desktop é uma aplicação Swing. Seu endereço do middleware deve ser configurado para o host correto. Em execução distribuída, `127.0.0.1` não aponta para o servidor remoto: aponta sempre para o próprio computador do cliente.
+
+### 11.3. Cliente Python
+
+Na pasta `Chat_Cliente_Python`, execute:
 
 ```powershell
-java -jar .\target\Chat_Cliente_Desktop-1.0-SNAPSHOT.jar
+python main.py
 ```
 
-Quando o middleware estiver em outra máquina, informe o endereço do servidor:
+Para diagnosticar a conexão TLS e consultar o histórico:
 
 ```powershell
-java -Dchat.server.host=192.168.1.50 -jar .\target\Chat_Cliente_Desktop-1.0-SNAPSHOT.jar
+python diagnostico.py
 ```
 
-Substitua o endereço de exemplo pelo IP ou hostname real do middleware.
+O cliente utiliza `config.json` para host e porta do middleware e o certificado público da CA para validar o servidor. O endereço de desenvolvimento atual é `127.0.0.1:6665`. Na rede da demonstração, configure o endereço IP/hostname do middleware e mantenha o certificado compatível com o nome utilizado.
 
-### 11.3. Publicação do WAR no GlassFish
+### 11.4. Publicação do cliente Web
 
-Defina `GLASSFISH_HOME` como a pasta de instalação que contém a subpasta `bin`, e não como a própria pasta `bin`:
+O cliente Web é empacotado como WAR e publicado no GlassFish. O middleware HTTPS precisa estar ativo antes de testar o chat Web.
+
+Exemplo de implantação com `asadmin` (ajuste `GLASSFISH_HOME` para a instalação local):
 
 ```powershell
-$env:GLASSFISH_HOME = "C:\Users\<usuario>\GlassFish_Server"
+$env:GLASSFISH_HOME = "C:\caminho\para\GlassFish"
 $asadmin = Join-Path $env:GLASSFISH_HOME "bin\asadmin.bat"
-Test-Path $asadmin
-```
 
-O último comando deve retornar `True`. Consulte e inicie o domínio:
-
-```powershell
 & $asadmin list-domains
 & $asadmin start-domain domain1
-```
-
-Depois de gerar o WAR, publique-o sem NetBeans:
-
-```powershell
 & $asadmin deploy --force=true --precompilejsp=true `
-  "C:\caminho\do\repositorio\SD-v6\Chat_Cliente_Web\target\Chat_Cliente_Web.war"
+    ".\SD-v6\Chat_Cliente_Web\target\Chat_Cliente_Web.war"
 ```
-
-A opção `--precompilejsp=true` solicita a compilação dos JSPs durante o deploy. Isso permite identificar erros de tradução JSP antes de abrir a aplicação. Consulte o [manual de referência do GlassFish](https://glassfish.org/docs/latest/reference-manual.html) para as opções de `asadmin deploy`.
 
 Confira a publicação:
 
@@ -444,87 +547,96 @@ Confira a publicação:
 & $asadmin list-applications --type web
 ```
 
-Endereço padrão:
-
-```text
-http://localhost:8080/Chat_Cliente_Web/
-```
-
-Para atualizar, execute novamente o deploy com `--force=true`. Para remover a aplicação:
-
-```powershell
-& $asadmin undeploy Chat_Cliente_Web
-```
-
-Para encerrar o domínio:
-
-```powershell
-& $asadmin stop-domain domain1
-```
-
-O GlassFish hospeda o WAR, mas não substitui o Middleware. O processo do Middleware deve estar ativo antes de testar o chat Web.
+O endereço padrão pode ser `http://localhost:8080/Chat_Cliente_Web/`, dependendo da configuração do domínio GlassFish.
 
 ## 12. Configuração de rede
 
-O arquivo `SD-v6/Chat_Cliente_Web/src/main/webapp/WEB-INF/web.xml` contém quatro parâmetros:
+### 12.1. Endereços do cliente Web
 
-| Parâmetro | Utilizado por | Exemplo |
-|---|---|---|
-| `middleware.baseUrl` | Chamadas feitas pelo servidor Web ao middleware. | `http://127.0.0.1:8081` |
-| `middleware.publicBaseUrl` | Navegador para API e imagens. | `http://192.168.1.50:8081` |
-| `log.collector.url` | Servidor Web para o coletor. | `http://127.0.0.1:8082/api/logs` |
-| `log.collector.publicUrl` | Navegador para enviar erros. | `http://192.168.1.50:8082/api/logs` |
+O arquivo `SD-v6/Chat_Cliente_Web/src/main/webapp/WEB-INF/web.xml` contém parâmetros de configuração do middleware e do coletor de logs. Os valores de desenvolvimento utilizam `https://127.0.0.1:8443`.
 
-Quando GlassFish e middleware estiverem na mesma máquina, os endereços utilizados pelo servidor podem apontar para `127.0.0.1`. Quando o navegador estiver em outro computador, os parâmetros públicos devem usar um endereço alcançável por ele.
+Na demonstração distribuída, os parâmetros usados pelo navegador devem apontar para um endereço alcançável a partir do computador que abriu o navegador. O servidor HTTPS deve apresentar um certificado cujo SAN corresponda ao hostname/IP utilizado. O certificado raiz público da CA precisa estar confiável no navegador/Windows.
 
-Libere no firewall, conforme a topologia utilizada, as portas TCP 6661, 6662, 8081, 8082 e a porta HTTP do GlassFish (8080 por padrão). Não exponha a porta administrativa do GlassFish aos clientes.
+### 12.2. Endereço do cliente Python
 
-## 13. Testes e demonstração
+O cliente Python utiliza o host `127.0.0.1` e a porta `6665` na configuração local atual. Para outro host, altere o endereço em `config.json` ou utilize o mecanismo de configuração suportado pelo cliente. O certificado da CA deve continuar sendo validado; não desative a verificação TLS.
 
-A demonstração deve reproduzir os itens solicitados pelo professor. Recomenda-se executar os testes com mais de um cliente conectado simultaneamente.
+### 12.3. Banco de dados
+
+O endereço do MySQL é separado do endereço do middleware e é configurado pelas variáveis `CHAT_DB_*`. Os clientes não precisam conhecer o endereço do MySQL.
+
+## 13. Testes já realizados e testes pendentes
+
+### 13.1. Testes já realizados
+
+- conexão JDBC com MySQL 8.4.13 e banco `chat_distribuido`;
+- acesso à tabela `mensagens` pela camada DAO;
+- inicialização do middleware com consulta do total de mensagens persistidas;
+- comunicação JSON/TLS do cliente Desktop;
+- comunicação JSON/TLS do cliente Python;
+- comunicação HTTPS do cliente Web após ajuste do consumo da API;
+- consulta do histórico armazenado no MySQL;
+- preservação do histórico após encerrar e reiniciar o middleware;
+- consulta e envio de mensagens no fluxo de desenvolvimento local.
+
+### 13.2. Testes ainda necessários
 
 | Teste | Procedimento | Evidência esperada |
 |---|---|---|
-| Histórico inicial | Iniciar o middleware com um TXT já preenchido. | Mensagens antigas aparecem após carregar o repositório. |
-| Persistência | Enviar mensagens pelo Desktop e pelo Web. | Mensagens aparecem nos dois clientes e são acrescentadas ao TXT. |
-| Consulta em memória | Consultar o histórico repetidamente. | O atendimento usa a lista compartilhada, sem reler o arquivo a cada consulta. |
-| Falha de gravação | Simular indisponibilidade/permissão negada no arquivo de histórico. | A mensagem não é incluída na lista nem confirmada com sucesso; o erro é registrado. |
-| Concorrência | Conectar vários clientes e enviar mensagens simultaneamente. | Mensagens persistidas sem mistura ou perda causada por concorrência. |
-| Independência | Desligar Web, Desktop ou coletor individualmente. | Os serviços restantes continuam em execução. |
-| Recursos compartilhados | Selecionar e enviar avatares e figurinhas nos dois clientes. | As imagens são recuperadas por URL do middleware. |
-| Erros do cliente | Provocar exceções em Desktop e Web. | Ocorrências aparecem nos arquivos de cliente correspondentes. |
-| Erros do servidor | Provocar falhas em cada serviço do middleware. | Ocorrências aparecem nos arquivos por serviço. |
-| Execução independente | Fechar o NetBeans e iniciar JARs e GlassFish pelo terminal. | O chat continua disponível pela URL publicada. |
+| MySQL remoto | Middleware em outro computador, MySQL na máquina que hospeda o banco. | JDBC conecta ao IP remoto e consulta `mensagens`. |
+| Persistência de todas as modalidades | Enviar uma mensagem Desktop, Web e Python. | Cada registro aparece na mesma tabela MySQL. |
+| Reinicialização | Encerrar e reabrir o middleware. | Histórico continua disponível. |
+| Concorrência | Vários clientes enviam mensagens em paralelo. | Registros sem perda ou duplicação indevida. |
+| Execução sem IDE | Iniciar middleware e clientes empacotados com NetBeans fechado. | Aplicação continua funcional. |
+| Múltiplas instâncias | Executar 2 Web, 2 Desktop e 2 Python. | Seis instâncias interagem. |
+| Rede distribuída | Usar vários computadores conectados ao mesmo hotspot/rede. | IPs, hosts e conexões reais demonstráveis. |
+| Publicidade multicast | Alterar publicidade por aviso multicast. | Clientes atualizam a imagem sincronizadamente. |
+| Replicação síncrona A→B | Iniciar B em `--replica-only`, habilitar replicação em A e enviar mensagens pelos três clientes. | Mesmo `message_id` aparece nos dois bancos; ACK de A somente após ACK de B. |
+| Idempotência | Reenviar ao B uma replicação já recebida com o mesmo `message_id`. | B confirma duplicata idêntica sem criar segunda linha e rejeita ID conflitante. |
+| Banco B e failover | Derrubar Middleware A e continuar com B. | **Ainda pendente:** promoção de B e reconexão automática dos clientes. |
 
-Para comprovar a separação de logs, apresentar os arquivos abaixo:
+## 14. Banco B, replicação e tolerância a falhas
 
-```text
-data/logs/
-├── client_desktop_errors.log
-├── client_web_errors.log
-├── server_middleware_desktop_errors.log
-├── server_middleware_web_errors.log
-└── server_middleware_internal_errors.log
-```
+O Banco B foi criado com a mesma tabela `mensagens` do Banco A, mas sob o schema independente `chat_distribuido_b`. Os scripts estão em `database/schema.sql` e `database/schema_b.sql`.
 
-O tipo de cliente é normalizado antes de compor o nome do arquivo, permitindo registros como `client_mobile_errors.log`. Para adicionar um novo tipo de serviço do servidor, também é necessário ampliar a normalização de serviços em `Util`, que atualmente reconhece `desktop`, `web` e `internal`.
+A primeira fase de replicação está implementada no código:
 
-## 14. Limitações e segurança
+- Middleware A persiste a mensagem no Banco A;
+- quando `CHAT_REPLICATION_ENABLED=true`, envia um envelope interno com a mensagem original e seu HTML ao Middleware B por TLS;
+- B autentica o envelope por token compartilhado, valida a mensagem e grava no Banco B;
+- a gravação no B é idempotente por `message_id`, validando que uma repetição possua o mesmo conteúdo;
+- B devolve ACK interno e A só então confirma a mensagem ao cliente.
 
-Esta implementação tem finalidade acadêmica e deve ser utilizada em uma rede controlada. Antes de qualquer exposição pública, considere as seguintes limitações:
+Para teste local, B é iniciado em modo `--replica-only`, escutando na porta interna `6666`. Os scripts PowerShell estão em `scripts/windows/`.
 
-- Os endpoints HTTP utilizam HTTP sem TLS; credenciais e conteúdo não são criptografados em trânsito.
-- O middleware libera CORS de forma ampla para permitir chamadas do navegador em outra porta.
-- Os endpoints atuais não implementam autenticação ou autorização de usuários.
-- O histórico armazena conteúdo HTML apresentado pelos clientes; a renderização desse conteúdo deve ser protegida contra injeção de HTML/JavaScript antes de uso fora de um ambiente controlado.
-- O protocolo TCP Desktop utiliza `readUTF()`/`writeUTF()`, que possui limite de tamanho por mensagem.
-- O endereço `127.0.0.1` só atende clientes no mesmo computador. Para acesso remoto, configure IP/hostname e firewall.
-- Deve existir uma única instância do middleware escrevendo em cada diretório de dados, pois a sincronização implementada é local ao processo.
+**Atenção ao estado:** a implementação de replicação precisa ser testada ponta a ponta no ambiente local. Se B estiver indisponível, A não deve confirmar a mensagem ao cliente; a linha já gravada no Banco A pode permanecer sem confirmação enquanto o reserva estiver fora do ar. Ainda não há uma fila persistente de reenvio automático.
 
-## Referência da atividade
+Continuam pendentes para atender integralmente ao requisito de 6 pontos:
 
-**Atividade Prática — Sistemas Distribuídos: Evolução do chat e do middleware.** Documento fornecido na disciplina de Sistemas Distribuídos, Engenharia de Computação, com sete itens: persistência em RAM/TXT; serviços independentes; servidor Web e imagens compartilhadas; coleta de erros de clientes; logs por serviço; empacotamento e deploy; demonstração com múltiplos clientes.
+- teste de replicação com A e B em hosts/instâncias independentes;
+- promoção automática do B para abrir os serviços de clientes após falha de A;
+- clientes configurados com os dois endereços e reconexão/failover automático;
+- continuidade do recebimento e persistência de novas mensagens pelo B;
+- demonstração de desligamento de A, continuidade no B e bancos independentes.
+
+Duas bases no mesmo MySQL Server permitem validar o fluxo de dados, mas não demonstram tolerância real à falha do servidor MySQL. Para a videoaula, Banco A e Banco B devem estar em instâncias/hosts independentes.
+
+## 15. Segurança e arquivos que não devem ser versionados
+
+O projeto utiliza TLS/HTTPS para os canais atuais de comunicação cliente–middleware. Os clientes Desktop e Python validam a CA pública do projeto; o navegador deve confiar na mesma CA para acessar o HTTPS sem aviso de certificado.
+
+Cuidados para o repositório:
+
+- versionar o certificado público da CA (`.cer`) quando necessário para validar o servidor;
+- **não** versionar keystores ou chaves privadas (`.p12`, `.pfx`, `.jks`, `.keystore`);
+- **não** versionar `tls.properties`, arquivos com senhas ou arquivos locais de configuração do banco;
+- **não** versionar os diretórios de execução `data/`, logs ou `target/`;
+- manter scripts SQL, fontes, POMs e arquivos de exemplo sem credenciais;
+- manter `CHAT_REPLICATION_TOKEN` fora do Git e restringir a porta interna 6666 ao middleware principal;
+- restringir a porta 3306 à rede e aos hosts necessários; não expor MySQL diretamente à internet.
+
+O `.gitignore` da raiz deve cobrir os padrões acima. Arquivos que já estejam rastreados pelo Git precisam ser removidos do índice separadamente; adicionar uma regra ao `.gitignore` não remove arquivos anteriormente versionados.
 
 ---
 
-**Projeto acadêmico — Engenharia de Computação — Sistemas Distribuídos.**
+**Projeto acadêmico — Engenharia de Computação — Sistemas Distribuídos — 2026.**

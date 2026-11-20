@@ -31,9 +31,7 @@ import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Servidor JSON/TLS destinado a clientes desenvolvidos em outras linguagens.
- *
- * O protocolo e o historico sao os mesmos utilizados pelo cliente Java.
- * Cada conexao recebe uma linha JSON e devolve uma linha JSON.
+ * Utiliza o mesmo protocolo e a mesma persistencia MySQL dos clientes Java.
  */
 public class TerceirosJsonRecepcaoThread {
 
@@ -47,20 +45,16 @@ public class TerceirosJsonRecepcaoThread {
     private final Set<Socket> clientesAtivos =
             ConcurrentHashMap.newKeySet();
 
-    /**
-     * Inicializa o socket TLS de forma sincrona. Assim, o painel consegue
-     * detectar erros de certificado ou porta ocupada antes de indicar sucesso.
-     */
     public synchronized void iniciar() throws IOException {
 
         if (isRunning()) {
             return;
         }
 
+        // Impede iniciar o listener quando o MySQL esta indisponivel.
         Util.inicializarRepositorio();
 
         SSLContext contexto;
-
         try {
             contexto = ConfiguracaoTLS.criarContextoServidor();
         } catch (GeneralSecurityException erro) {
@@ -128,7 +122,6 @@ public class TerceirosJsonRecepcaoThread {
         try {
             while (!paradaManual) {
                 SSLServerSocket servidor = receptor;
-
                 if (servidor == null || servidor.isClosed()) {
                     break;
                 }
@@ -138,16 +131,13 @@ public class TerceirosJsonRecepcaoThread {
                 clientesAtivos.add(cliente);
 
                 ExecutorService executor = atendimentos;
-
                 try {
                     if (executor == null || executor.isShutdown()) {
                         fecharSocket(cliente);
                         clientesAtivos.remove(cliente);
                         continue;
                     }
-
                     executor.execute(() -> atenderCliente(cliente));
-
                 } catch (RejectedExecutionException erro) {
                     clientesAtivos.remove(cliente);
                     fecharSocket(cliente);
@@ -211,13 +201,16 @@ public class TerceirosJsonRecepcaoThread {
                 if (linhaJson.length() > TAMANHO_MAXIMO_JSON) {
                     enviarResposta(
                             output,
-                            criarErro(null, "JSON_MUITO_GRANDE", "A requisicao ultrapassa o limite permitido.")
+                            criarErro(
+                                    null,
+                                    "JSON_MUITO_GRANDE",
+                                    "A requisicao ultrapassa o limite permitido."
+                            )
                     );
                     return;
                 }
 
                 ChatMessage requisicao;
-
                 try {
                     requisicao = JsonProtocol.deserializeLine(linhaJson);
                 } catch (Exception erro) {
@@ -228,10 +221,13 @@ public class TerceirosJsonRecepcaoThread {
                             "TerceirosJsonRecepcaoThread.deserializeLine",
                             erro
                     );
-
                     enviarResposta(
                             output,
-                            criarErro(null, "JSON_INVALIDO", "Nao foi possivel interpretar o JSON recebido.")
+                            criarErro(
+                                    null,
+                                    "JSON_INVALIDO",
+                                    "Nao foi possivel interpretar o JSON recebido."
+                            )
                     );
                     return;
                 }
@@ -242,8 +238,11 @@ public class TerceirosJsonRecepcaoThread {
 
         } catch (Exception erro) {
             if (!paradaManual) {
-                registrarErro(
-                        "TerceirosJsonRecepcaoThread.atenderCliente | IP: " + ip,
+                Util.registrarErroServidor(
+                        "desktop",
+                        "TERCEIROS",
+                        ip,
+                        "TerceirosJsonRecepcaoThread.atenderCliente",
                         erro
                 );
             }
@@ -267,14 +266,34 @@ public class TerceirosJsonRecepcaoThread {
                 );
             }
 
-            ChatMessage resposta = new ChatMessage(
+            final String historico;
+            try {
+                historico = Util.obterHistoricoHtml();
+            } catch (IOException erroBanco) {
+                registrarErro(
+                        "TerceirosJsonRecepcaoThread - consulta historico MySQL",
+                        erroBanco
+                );
+                return criarErro(
+                        requisicao.id(),
+                        "ERRO_HISTORICO",
+                        "Nao foi possivel consultar o historico no banco de dados."
+                );
+            }
+
+            System.out.println(
+                    "Historico JSON TLS consultado no MySQL por: "
+                    + requisicao.sender() + " | IP: " + ip
+            );
+
+            return new ChatMessage(
                     ChatMessage.CURRENT_VERSION,
                     null,
                     requisicao.id(),
                     ChatMessage.Type.HISTORY_RESPONSE,
                     "middleware",
                     requisicao.sender(),
-                    Util.obterHistoricoHtml(),
+                    historico,
                     "", "", "", "",
                     Instant.now().toString(),
                     Map.of(
@@ -282,13 +301,6 @@ public class TerceirosJsonRecepcaoThread {
                             "format", "text/html"
                     )
             );
-
-            System.out.println(
-                    "Historico JSON TLS enviado ao cliente de terceiros: "
-                    + requisicao.sender() + " | IP: " + ip
-            );
-
-            return resposta;
         }
 
         if (requisicao.type() == ChatMessage.Type.SEND_MESSAGE) {
@@ -314,11 +326,23 @@ public class TerceirosJsonRecepcaoThread {
             String mensagemHtml =
                     RenderizadorMensagemHtml.renderizar(requisicao);
 
-            // O historico e compartilhado com os clientes Java e Web.
-            Util.adicionarMensagem(mensagemHtml);
+            // O ACK so e produzido depois da confirmacao do INSERT no MySQL.
+            try {
+                Util.registrarMensagem(requisicao, mensagemHtml);
+            } catch (IOException erroBanco) {
+                registrarErro(
+                        "TerceirosJsonRecepcaoThread - gravacao MySQL",
+                        erroBanco
+                );
+                return criarErro(
+                        requisicao.id(),
+                        "ERRO_PERSISTENCIA",
+                        "Nao foi possivel registrar a mensagem no banco de dados."
+                );
+            }
 
             System.out.println(
-                    "Mensagem JSON TLS recebida de cliente de terceiros: "
+                    "Mensagem JSON TLS persistida no MySQL: "
                     + requisicao.sender() + " | IP: " + ip
             );
 
@@ -388,7 +412,6 @@ public class TerceirosJsonRecepcaoThread {
                 && !servidor.isClosed();
     }
 
-    /** Encerra o listener e todas as conexoes ativas. */
     public synchronized void fecharServidor() {
 
         paradaManual = true;
