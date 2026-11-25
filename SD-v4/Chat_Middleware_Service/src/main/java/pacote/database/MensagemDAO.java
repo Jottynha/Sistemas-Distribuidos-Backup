@@ -411,11 +411,12 @@ public final class MensagemDAO {
         try {
             return OffsetDateTime.parse(valor)
                     .withOffsetSameInstant(ZoneOffset.UTC)
-                    .toLocalDateTime();
+                    .toLocalDateTime()
+                    .truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         } catch (DateTimeParseException erroComFuso) {
             try {
                 // Compatibilidade com valores ISO locais sem offset.
-                return LocalDateTime.parse(valor);
+                return LocalDateTime.parse(valor).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
             } catch (DateTimeParseException erroLocal) {
                 erroLocal.addSuppressed(erroComFuso);
                 throw new IllegalArgumentException(

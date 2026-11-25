@@ -26,12 +26,19 @@ public class FrmLogin extends javax.swing.JFrame {
 
     private volatile boolean atualizandoCatalogoAvatares = false;
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FrmLogin.class.getName());
+    
     public FrmLogin() {
+        try {
+            ConfiguracaoTLSCliente.inicializar();
+        } catch (java.io.IOException erro) {
+            throw new IllegalStateException(
+                    "Não foi possível inicializar os certificados TLS.",
+                    erro
+            );
+        }
 
         initComponents();
-
         configurarSeletorAvatares();
-
         carregarAvataresServidor();
     }
 
@@ -73,7 +80,7 @@ public class FrmLogin extends javax.swing.JFrame {
         setLocationRelativeTo(null);
     }
 
-    
+
     private void carregarAvataresServidor() {
         Thread.ofVirtual().start(() -> {
             java.net.HttpURLConnection conexao = null;

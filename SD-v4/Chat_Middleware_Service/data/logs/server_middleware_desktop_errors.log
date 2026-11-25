@@ -116,3 +116,9 @@
 
 2026-11-20 17:25:53 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
 
+2026-11-25 20:37:38 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+
+2026-11-25 20:37:46 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+
+2026-11-25 20:37:51 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
+
