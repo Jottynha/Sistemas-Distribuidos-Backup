@@ -14,12 +14,12 @@
 
     <context-param>
         <param-name>middleware.publicBaseUrl</param-name>
-        <param-value>https://127.0.0.1:8443</param-value>
+        <param-value>https://10.142.98.144:8443</param-value>
     </context-param>
 
     <context-param>
         <param-name>middleware.backupPublicBaseUrl</param-name>
-        <param-value>https://127.0.0.1:8443</param-value>
+        <param-value>https://10.142.98.144:8443</param-value>
     </context-param>
 
     <!-- Coletor de logs integrado ao servidor HTTPS. -->
@@ -30,7 +30,7 @@
 
     <context-param>
         <param-name>log.collector.publicUrl</param-name>
-        <param-value>https://127.0.0.1:8443/api/logs</param-value>
+        <param-value>https://10.142.98.144:8443/api/logs</param-value>
     </context-param>
 
     <session-config>

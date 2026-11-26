@@ -22,7 +22,7 @@ public class Util {
     public static String avatar = "";
 
     private static final String HOST_PRIMARIO =
-            valor("chat.server.host", "CHAT_SERVER_HOST", "127.0.0.1");
+            valor("chat.server.host", "CHAT_SERVER_HOST", "10.142.98.144");
 
     private static final String HOST_RESERVA =
             valor("chat.server.backupHost", "CHAT_SERVER_BACKUP_HOST", "");

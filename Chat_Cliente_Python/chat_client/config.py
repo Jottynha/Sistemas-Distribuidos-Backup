@@ -90,7 +90,7 @@ def load_config() -> ClientConfig:
     advertising = data.get("advertising", {})
 
     ca_value = str(tls.get("ca_file", "../SD-v4/certificados/chat-root-ca.cer"))
-    host = os.getenv("CHAT_SERVER_HOST", str(server.get("host", "127.0.0.1"))).strip()
+    host = os.getenv("CHAT_SERVER_HOST", str(server.get("host", "10.142.98.144"))).strip()
     port = int(os.getenv("CHAT_SERVER_PYTHON_PORT", server.get("port", 6665)))
     web_port = int(os.getenv("CHAT_SERVER_WEB_PORT", web.get("port", 8443)))
     multicast_group = os.getenv("CHAT_AD_MULTICAST_GROUP", str(advertising.get("multicast_group", "239.255.42.99"))).strip()
