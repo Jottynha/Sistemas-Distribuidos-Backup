@@ -122,3 +122,7 @@
 
 2026-11-25 20:37:51 | desktop | MYSQL | 127.0.0.1 | DesktopJsonRecepcaoThread - gravacao mensagem | IOException: Nao foi possivel persistir e confirmar a mensagem nos bancos configurados.
 
+2026-11-25 21:09:43 | desktop | TERCEIROS | 127.0.0.1 | TerceirosJsonRecepcaoThread.atenderCliente | SocketTimeoutException: Read timed out
+
+2026-11-25 21:10:03 | desktop | TERCEIROS | 127.0.0.1 | TerceirosJsonRecepcaoThread.atenderCliente | SocketTimeoutException: Read timed out
+

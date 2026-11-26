@@ -869,13 +869,15 @@ public class FrmChat extends javax.swing.JFrame {
                     );
                 }
 
-                String[] stickers = resposta.lines()
-                        .map(String::trim)
-                        .filter(nome -> !nome.isBlank())
-                        .filter(nome -> !nome.contains(".."))
-                        .filter(nome -> !nome.contains("/"))
-                        .filter(nome -> !nome.contains("\\"))
-                        .toArray(String[]::new);
+                String[] nomes = new com.fasterxml.jackson.databind.ObjectMapper().readValue(resposta, String[].class);
+                String[] stickers = java.util.Arrays.stream(nomes)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(nome -> !nome.isBlank())
+                .filter(nome -> !nome.contains(".."))
+                .filter(nome -> !nome.contains("/"))
+                .filter(nome -> !nome.contains("\\"))
+                .toArray(String[]::new);
 
                 if (stickers.length == 0) {
                     return;
